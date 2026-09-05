@@ -52,6 +52,7 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -656,17 +657,56 @@ public class CursorAccessibilityService extends AccessibilityService implements 
         if (voiceController == null || voiceConfig == null) {
             return;
         }
-        if (voiceConfig.isEnabled() && serviceState == ServiceState.ENABLE) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED) {
-                Log.w(TAG, "RECORD_AUDIO permission not granted; voice disabled.");
-                stopVoice();
-                return;
-            }
+        boolean active = voiceShouldRun();
+        if (active) {
+            // Fast path: when quick-fire is enabled, a live partial transcript already matching a
+            // configured command casts immediately (see VoiceController#setQuickFireMatcher).
+            voiceController.setQuickFireMatcher(
+                voiceConfig.isQuickFireEnabled() ? this::matchesVoiceCommand : null);
             voiceController.start();
         } else {
+            if (voiceConfig.isEnabled() && serviceState == ServiceState.ENABLE) {
+                Log.w(TAG, "RECORD_AUDIO permission not granted; voice disabled.");
+            }
             stopVoice();
         }
+        updateSkillTapOverlay(active);
+    }
+
+    /** Voice recognition may run only when enabled, ENABLE mode, and mic permission is granted. */
+    private boolean voiceShouldRun() {
+        return voiceConfig != null
+            && voiceConfig.isEnabled()
+            && serviceState == ServiceState.ENABLE
+            && ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Show faint on-screen markers at the skill tap points while voice control is active (they
+     * are visual reference for aligning the taps with the real game buttons) and hide them
+     * otherwise. Positions are recomputed from the current screen size on every call.
+     */
+    private void updateSkillTapOverlay(boolean voiceActive) {
+        if (serviceUiManager == null || screenSize == null) {
+            return;
+        }
+        if (!voiceActive || screenSize.x <= 0 || screenSize.y <= 0) {
+            serviceUiManager.hideSkillTapMarkers();
+            return;
+        }
+        ScreenPlacementConfig placements = new ScreenPlacementConfig(this);
+        int count = ScreenPlacementConfig.skillCount();
+        float[] xs = new float[count];
+        float[] ys = new float[count];
+        String[] labels = new String[count];
+        for (int i = 0; i < count; i++) {
+            xs[i] = placements.getSkillX(i) * screenSize.x;
+            ys[i] = placements.getSkillY(i) * screenSize.y;
+            List<String> words = voiceConfig.getSkillPhrases(i);
+            labels[i] = words.isEmpty() ? "Skill " + (i + 1) : words.get(0);
+        }
+        serviceUiManager.showSkillTapMarkers(xs, ys, labels);
     }
 
     private void stopVoice() {
@@ -682,6 +722,15 @@ public class CursorAccessibilityService extends AccessibilityService implements 
             Log.i(TAG, "voice command: " + phrase + " -> " + command.action);
             executeVoiceAction(command);
         }
+    }
+
+    /**
+     * True when the heard text matches a configured command; used by the quick-fire fast path so
+     * the live transcript can cast before the utterance ends. Reads the current {@code voiceConfig}
+     * field, so a profile/mode reload stays in effect.
+     */
+    private boolean matchesVoiceCommand(String phrase) {
+        return voiceConfig.getCommandForPhrase(phrase) != null;
     }
 
     private void executeVoiceAction(VoiceCommandConfig.Command command) {
@@ -852,6 +901,10 @@ public class CursorAccessibilityService extends AccessibilityService implements 
             case ENABLE:
             case GLOBAL_STICK:
                 serviceUiManager.showAllWindows();
+                updateSkillTapOverlay(
+                    voiceConfig != null
+                        && voiceConfig.isEnabled()
+                        && serviceState == ServiceState.ENABLE);
             case PAUSE:
                 serviceUiManager.showCameraBox();
                 break;

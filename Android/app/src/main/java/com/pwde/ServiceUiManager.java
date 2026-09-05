@@ -116,6 +116,10 @@ public class ServiceUiManager {
   public JoystickOverlayView joystickOverlayView;
   public LayoutParams joystickLayoutParams;
 
+  /** On-screen skill tap markers (rendered while voice control is active). */
+  public SkillTapOverlayView skillTapOverlayView;
+  public LayoutParams skillTapLayoutParams;
+
   private final int floatWindowFlags;
   private boolean cameraBoxDraggable = true;
 
@@ -437,6 +441,7 @@ public class ServiceUiManager {
     hideCameraBox();
     hideCursor();
     hideFullscreenCanvas();
+    hideSkillTapMarkers();
   }
 
   /** This enum represents the state of camera. */
@@ -598,6 +603,44 @@ public class ServiceUiManager {
     }
     joystickOverlayView.setJoystickParams(cx, cy, radius);
     joystickOverlayView.setThumbOffset(offsetX, offsetY);
+  }
+
+  /** Show (or refresh) faint markers at the voice skill tap points. Values are in screen pixels. */
+  public void showSkillTapMarkers(float[] xs, float[] ys, String[] labels) {
+    if (skillTapOverlayView == null) {
+      skillTapOverlayView = new SkillTapOverlayView(parentContext);
+      skillTapLayoutParams =
+          new LayoutParams(
+              LayoutParams.MATCH_PARENT,
+              LayoutParams.MATCH_PARENT,
+              LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+              LayoutParams.FLAG_NOT_TOUCHABLE
+                  | LayoutParams.FLAG_NOT_FOCUSABLE
+                  | LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                  | LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+              PixelFormat.TRANSLUCENT);
+      skillTapLayoutParams.gravity = Gravity.TOP | Gravity.START;
+      try {
+        windowManager.addView(skillTapOverlayView, skillTapLayoutParams);
+      } catch (RuntimeException e) {
+        Log.w(TAG, "windowManager failed to add skillTapOverlayView: " + e.getMessage());
+      }
+    }
+    skillTapOverlayView.setSkillPoints(xs, ys, labels);
+  }
+
+  /** Remove the voice skill tap markers from the screen. */
+  public void hideSkillTapMarkers() {
+    if (skillTapOverlayView == null) {
+      return;
+    }
+    try {
+      windowManager.removeView(skillTapOverlayView);
+    } catch (RuntimeException e) {
+      Log.w(TAG, "windowManager failed to remove skillTapOverlayView, might not attached.");
+    }
+    skillTapOverlayView = null;
+    skillTapLayoutParams = null;
   }
 
   /** Save default camera box position to make it persistent when open the app. */

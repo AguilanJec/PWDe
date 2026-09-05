@@ -59,12 +59,37 @@ public final class VoiceCommandConfig {
         || action == Action.SWITCH_MODE_JOYSTICK;
   }
 
+  /** Returns true for the joystick steering actions (their words are not editable in the UI). */
+  public static boolean isJoystickAction(Action action) {
+    return action == Action.JOYSTICK_UP
+        || action == Action.JOYSTICK_DOWN
+        || action == Action.JOYSTICK_LEFT
+        || action == Action.JOYSTICK_RIGHT;
+  }
+
+  /** @return the action cast by skill {@code index} (0-based): 0 -> {@link Action#SKILL_1}. */
+  public static Action skillAction(int index) {
+    return Action.values()[Action.SKILL_1.ordinal() + index];
+  }
+
   private static final String KEY_ENABLED = "voice_enabled";
 
   // Commands as a JSON array of {"phrase": "...", "action": "SKILL_1", "target": "..."}.
   private static final String KEY_COMMANDS = "voice_commands";
 
+  /**
+   * When true a configured phrase matches anywhere inside the heard text (see
+   * {@link #getCommandForPhrase}).
+   */
+  private static final String KEY_MATCH_CONTAINS = "voice_match_contains";
+
+  /** When true a command fires as soon as the live transcript matches, before the utterance ends. */
+  private static final String KEY_QUICK_FIRE = "voice_quick_fire";
+
   public static final int SKILL_COUNT = 3;
+
+  /** Default spoken words that cast each skill (used when no word is bound yet). */
+  public static final String[] DEFAULT_SKILL_PHRASES = {"1", "2", "3"};
 
   private static final String[][] DEFAULT_COMMANDS = {
     {"1", "SKILL_1"},
@@ -90,6 +115,13 @@ public final class VoiceCommandConfig {
   };
 
   private boolean enabled;
+
+  /** True: match a configured phrase anywhere inside the heard text (whole words, longest wins). */
+  private boolean containsMatch = true;
+
+  /** True: fire commands from live (partial) transcripts instead of waiting for the final result. */
+  private boolean quickFire = true;
+
   private final List<Command> commands = new ArrayList<>();
 
   public static final class Command {
@@ -118,19 +150,98 @@ public final class VoiceCommandConfig {
     this.enabled = enabled;
   }
 
+  /**
+   * @return true when a configured phrase matches anywhere inside what was heard (whole words),
+   *     false when the heard text must equal the phrase exactly.
+   */
+  public boolean isContainsMatchEnabled() {
+    return containsMatch;
+  }
+
+  public void setContainsMatchEnabled(boolean enabled) {
+    this.containsMatch = enabled;
+  }
+
+  /** @return true when commands fire from live transcripts as soon as they match. */
+  public boolean isQuickFireEnabled() {
+    return quickFire;
+  }
+
+  public void setQuickFireEnabled(boolean enabled) {
+    this.quickFire = enabled;
+  }
+
   public List<Command> getCommands() {
     return commands;
   }
 
-  /** First command whose phrase matches, or {@code null} when nothing matches. */
+  /**
+   * First command whose phrase matches {@code text}, or {@code null} when nothing matches. In
+   * {@link #containsMatch} mode the phrase only needs to appear anywhere inside the heard text as
+   * whole words (so "skill one" and "one one" both cast via "one"); otherwise the heard text must
+   * equal the phrase exactly. When several phrases match inside one utterance the longest phrase
+   * wins (ties keep the first configured command), so "profile one" switches the profile instead
+   * of firing the shorter skill word "one" it contains.
+   */
   public Command getCommandForPhrase(String text) {
     String normalized = normalize(text);
+    if (containsMatch) {
+      return getCommandContainedIn(normalized);
+    }
     for (Command command : commands) {
       if (!command.phrase.isEmpty() && command.phrase.equals(normalized)) {
         return command;
       }
     }
     return null;
+  }
+
+  /**
+   * Whole-word contains matching: a phrase must appear in {@code normalizedText} as a contiguous
+   * run of words. Word boundaries are the spaces between words, so "one" never matches inside
+   * "alone"/"phone". The longest matching phrase wins; ties keep the first configured command.
+   */
+  private Command getCommandContainedIn(String normalizedText) {
+    if (normalizedText.isEmpty()) {
+      return null;
+    }
+    String[] heardWords = normalizedText.split("\\s+");
+    Command best = null;
+    int bestWords = -1;
+    int bestChars = -1;
+    for (Command command : commands) {
+      if (command.phrase.isEmpty()) {
+        continue;
+      }
+      String[] phraseWords = command.phrase.split("\\s+");
+      if (indexOfRun(heardWords, phraseWords) < 0) {
+        continue;
+      }
+      if (phraseWords.length > bestWords
+          || (phraseWords.length == bestWords && command.phrase.length() > bestChars)) {
+        best = command;
+        bestWords = phraseWords.length;
+        bestChars = command.phrase.length();
+      }
+    }
+    return best;
+  }
+
+  /** Index of the first place {@code run} appears as contiguous words in {@code words}, or -1. */
+  private static int indexOfRun(String[] words, String[] run) {
+    if (run.length == 0 || run.length > words.length) {
+      return -1;
+    }
+    for (int i = 0; i + run.length <= words.length; i++) {
+      boolean matches = true;
+      for (int j = 0; j < run.length && matches; j++) {
+        matches = run[j].equals(words[i + j]);
+      }
+      if (matches) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   public Action getActionForPhrase(String text) {
@@ -143,6 +254,24 @@ public final class VoiceCommandConfig {
       return "";
     }
     return text.toLowerCase().trim().replaceAll("[^a-z0-9 ]", "").trim();
+  }
+
+  /**
+   * Split a comma-separated list of spoken words (as typed in the skill-word fields) into
+   * normalized phrases. Empty tokens are dropped, so every token is a usable trigger word.
+   */
+  public static List<String> parsePhraseList(String text) {
+    List<String> phrases = new ArrayList<>();
+    if (text == null) {
+      return phrases;
+    }
+    for (String raw : text.split(",")) {
+      String normalized = normalize(raw);
+      if (!normalized.isEmpty()) {
+        phrases.add(normalized);
+      }
+    }
+    return phrases;
   }
 
   /** @return the configured spoken phrase that switches to the given profile, or default. */
@@ -202,6 +331,48 @@ public final class VoiceCommandConfig {
     }
   }
 
+  /**
+   * @return every spoken word currently bound to skill {@code index} (all of them trigger the
+   *     same tap), or the built-in default word when the skill has no binding yet.
+   */
+  public List<String> getSkillPhrases(int index) {
+    List<String> phrases = new ArrayList<>();
+    Action action = skillAction(index);
+    for (Command command : commands) {
+      if (command.action == action && !command.phrase.isEmpty()) {
+        phrases.add(command.phrase);
+      }
+    }
+    if (phrases.isEmpty() && index >= 0 && index < DEFAULT_SKILL_PHRASES.length) {
+      phrases.add(DEFAULT_SKILL_PHRASES[index]);
+    }
+    return phrases;
+  }
+
+  /**
+   * Bind the given words to skill {@code index}, replacing any previously bound words (including
+   * the built-in defaults/synonyms). An empty list clears the mapping; {@link
+   * #getSkillPhrases(int)} then falls back to the default word for display.
+   */
+  public void setSkillPhrases(int index, List<String> phrases) {
+    Action action = skillAction(index);
+    Iterator<Command> it = commands.iterator();
+    while (it.hasNext()) {
+      if (it.next().action == action) {
+        it.remove();
+      }
+    }
+    if (phrases == null) {
+      return;
+    }
+    for (String phrase : phrases) {
+      String normalized = normalize(phrase);
+      if (!normalized.isEmpty()) {
+        commands.add(new Command(normalized, action));
+      }
+    }
+  }
+
   /** @return true when {@code phrase} is already used by another command (ignoring {@code ignore}). */
   public boolean hasPhraseConflict(String phrase, Command ignore) {
     String normalized = normalize(phrase);
@@ -250,6 +421,8 @@ public final class VoiceCommandConfig {
     VoiceCommandConfig config = new VoiceCommandConfig(context);
     SharedPreferences prefs = new ProfileManager(context).getConfigSharedPreferences();
     config.enabled = prefs.getBoolean(KEY_ENABLED, false);
+    config.containsMatch = prefs.getBoolean(KEY_MATCH_CONTAINS, true);
+    config.quickFire = prefs.getBoolean(KEY_QUICK_FIRE, true);
     config.commands.clear();
     String raw = prefs.getString(KEY_COMMANDS, "");
     if (raw.isEmpty()) {
@@ -356,6 +529,8 @@ public final class VoiceCommandConfig {
         .getConfigSharedPreferences()
         .edit()
         .putBoolean(KEY_ENABLED, enabled)
+        .putBoolean(KEY_MATCH_CONTAINS, containsMatch)
+        .putBoolean(KEY_QUICK_FIRE, quickFire)
         .putString(KEY_COMMANDS, array.toString())
         .apply();
   }

@@ -631,6 +631,10 @@ public final class TestStationActivity extends AppCompatActivity {
     voiceListeningText.setTextColor(getColor(R.color.esports_accent));
     voiceHeardText.setText("What the recognizer hears will appear here live.");
     voiceLevelBar.setProgress(0);
+    // Mirror the live-cast fast path of the accessibility service so the mic test behaves like
+    // real use (quick-fire casts the moment a live transcript matches when enabled).
+    voiceController.setQuickFireMatcher(
+        config.isQuickFireEnabled() ? phrase -> config.getCommandForPhrase(phrase) != null : null);
     voiceController.start();
   }
 

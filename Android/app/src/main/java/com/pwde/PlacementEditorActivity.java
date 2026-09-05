@@ -99,8 +99,9 @@ public final class PlacementEditorActivity extends AppCompatActivity {
     TextView description = new TextView(this);
     if (MODE_VOICE_SKILLS.equals(mode)) {
       description.setText(
-          "Drag each marker to the exact spot of the matching button in your game. "
-              + "The \"1\" voice command taps Skill 1, \"2\" taps Skill 2, \"3\" taps Skill 3.");
+          "Drag each marker to the exact spot of its button in your game. "
+              + "The voice words from your Voice settings are: "
+              + voiceWordsSummary());
     } else {
       description.setText(
           "Drag the joystick to where you want its base to sit. Head tilt drives a virtual "
@@ -120,29 +121,27 @@ public final class PlacementEditorActivity extends AppCompatActivity {
         new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, /* weight= */ 1f));
 
-    // The joystick is positioned against a real game screen, so offer an optional reference
-    // image (background_reference) to line the base up. Visual aid only - never persisted.
-    if (MODE_JOYSTICK.equals(mode)) {
-      LinearLayout referenceRow = new LinearLayout(this);
-      referenceRow.setOrientation(LinearLayout.HORIZONTAL);
-      referenceRow.setGravity(Gravity.CENTER_VERTICAL);
+    // Both modes are positioned against a real game screen, so offer an optional reference
+    // image (background_reference) to line the markers up. Visual aid only - never persisted.
+    LinearLayout referenceRow = new LinearLayout(this);
+    referenceRow.setOrientation(LinearLayout.HORIZONTAL);
+    referenceRow.setGravity(Gravity.CENTER_VERTICAL);
 
-      TextView referenceLabel = new TextView(this);
-      referenceLabel.setText("Background reference");
-      referenceLabel.setTextColor(getColor(R.color.esports_text));
-      referenceRow.addView(
-          referenceLabel,
-          new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+    TextView referenceLabel = new TextView(this);
+    referenceLabel.setText("Background reference");
+    referenceLabel.setTextColor(getColor(R.color.esports_text));
+    referenceRow.addView(
+        referenceLabel,
+        new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-      Switch referenceSwitch = new Switch(this);
-      referenceSwitch.setOnCheckedChangeListener(
-          (button, checked) -> {
-            showReference = checked;
-            preview.invalidate();
-          });
-      referenceRow.addView(referenceSwitch);
-      root.addView(referenceRow);
-    }
+    Switch referenceSwitch = new Switch(this);
+    referenceSwitch.setOnCheckedChangeListener(
+        (button, checked) -> {
+          showReference = checked;
+          preview.invalidate();
+        });
+    referenceRow.addView(referenceSwitch);
+    root.addView(referenceRow);
 
     root.addView(preview);
 
@@ -191,6 +190,20 @@ public final class PlacementEditorActivity extends AppCompatActivity {
       JoystickConfig config = JoystickConfig.load(this);
       markers.add(new Marker(-1, "Joystick base", config.centerX, config.centerY));
     }
+  }
+
+  /** Compact summary of the current per-skill voice words, e.g. Skill 1 says "1, one". */
+  private String voiceWordsSummary() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(this);
+    List<String> parts = new ArrayList<>();
+    for (int i = 0; i < ScreenPlacementConfig.skillCount(); i++) {
+      parts.add(
+          ScreenPlacementConfig.SKILL_LABELS[i]
+              + " says \""
+              + TextUtils.join(", ", config.getSkillPhrases(i))
+              + "\"");
+    }
+    return TextUtils.join(", ", parts);
   }
 
   private void resetMarkers() {

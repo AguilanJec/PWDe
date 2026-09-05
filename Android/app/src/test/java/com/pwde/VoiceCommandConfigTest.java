@@ -23,6 +23,8 @@ import static org.junit.Assert.assertTrue;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import java.util.Arrays;
+import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -114,9 +116,66 @@ public class VoiceCommandConfigTest {
     String profileId = manager.createProfile("Second");
 
     VoiceCommandConfig config = VoiceCommandConfig.load(context);
+    // Exact matching keeps this test focused on the cleared mapping: in contains mode "second
+    // one" would still match the default skill word "one" (covered by containsMatch tests below).
+    config.setContainsMatchEnabled(false);
     config.setProfileSwitchPhrase(profileId, "second one");
     config.setProfileSwitchPhrase(profileId, "");
     assertNull(config.getCommandForPhrase("second one"));
+  }
+
+  @Test
+  public void skillPhrases_includeDefaultSynonyms() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    List<String> skillOne = config.getSkillPhrases(0);
+    assertTrue(skillOne.contains("1"));
+    assertTrue(skillOne.contains("one"));
+    assertEquals(VoiceCommandConfig.Action.SKILL_1, config.getActionForPhrase("one"));
+  }
+
+  @Test
+  public void customSkillWords_replaceDefaultsAndRoundTrip() {
+    android.content.Context context = ApplicationProvider.getApplicationContext();
+    VoiceCommandConfig config = VoiceCommandConfig.load(context);
+    config.setSkillPhrases(0, VoiceCommandConfig.parsePhraseList("fire, ult ,cast "));
+    config.save(context);
+
+    VoiceCommandConfig reloaded = VoiceCommandConfig.load(context);
+    assertEquals(Arrays.asList("fire", "ult", "cast"), reloaded.getSkillPhrases(0));
+    assertEquals(VoiceCommandConfig.Action.SKILL_1, reloaded.getActionForPhrase("FIRE"));
+    assertEquals(VoiceCommandConfig.Action.SKILL_1, reloaded.getActionForPhrase("ULT!"));
+    assertEquals(VoiceCommandConfig.Action.NONE, reloaded.getActionForPhrase("one"));
+  }
+
+  @Test
+  public void clearingSkillWords_removesMappingAndFallsBackToDefault() {
+    android.content.Context context = ApplicationProvider.getApplicationContext();
+    VoiceCommandConfig config = VoiceCommandConfig.load(context);
+    config.setSkillPhrases(0, VoiceCommandConfig.parsePhraseList("fire"));
+    config.setSkillPhrases(0, VoiceCommandConfig.parsePhraseList(""));
+
+    assertNull(config.getCommandForPhrase("fire"));
+    assertNull(config.getCommandForPhrase("1"));
+    // Display fallback exposes the default word, but it is no longer stored as a command.
+    assertEquals("1", config.getSkillPhrases(0).get(0));
+  }
+
+  @Test
+  public void skillsAreIndependent_eachKeepsItsOwnWords() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    config.setSkillPhrases(1, VoiceCommandConfig.parsePhraseList("blink"));
+
+    assertEquals(Arrays.asList("1", "one"), config.getSkillPhrases(0));
+    assertEquals(Arrays.asList("blink"), config.getSkillPhrases(1));
+    assertEquals(Arrays.asList("3", "three"), config.getSkillPhrases(2));
+  }
+
+  @Test
+  public void parsePhraseList_splitsAndNormalizesTokens() {
+    assertEquals(Arrays.asList("1", "one"), VoiceCommandConfig.parsePhraseList(" 1 , one "));
+    assertEquals(Arrays.asList("cast fire"), VoiceCommandConfig.parsePhraseList("  Cast Fire!! ,,, "));
+    assertTrue(VoiceCommandConfig.parsePhraseList(" , , ").isEmpty());
+    assertTrue(VoiceCommandConfig.parsePhraseList(null).isEmpty());
   }
 
   @Test
@@ -140,6 +199,79 @@ public class VoiceCommandConfigTest {
     manager.deleteProfile(profileId);
     VoiceCommandConfig reloaded = VoiceCommandConfig.load(context);
     assertNull(reloaded.getCommandForPhrase("temp profile"));
+  }
+
+  @Test
+  public void matchingToggles_areOnByDefault() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    assertTrue(config.isContainsMatchEnabled());
+    assertTrue(config.isQuickFireEnabled());
+  }
+
+  @Test
+  public void containsMatch_matchesWordAnywhereInPhrase() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    assertEquals(VoiceCommandConfig.Action.SKILL_1, config.getActionForPhrase("skill one"));
+    assertEquals(VoiceCommandConfig.Action.SKILL_1, config.getActionForPhrase("one one"));
+    assertEquals(VoiceCommandConfig.Action.SKILL_1, config.getActionForPhrase("use number 1 now"));
+    assertEquals(VoiceCommandConfig.Action.SKILL_2, config.getActionForPhrase("I said two"));
+    assertEquals(VoiceCommandConfig.Action.JOYSTICK_UP, config.getActionForPhrase("move up"));
+    assertEquals(
+        VoiceCommandConfig.Action.SWITCH_MODE_CURSOR,
+        config.getActionForPhrase("switch to cursor mode please"));
+  }
+
+  @Test
+  public void containsMatch_requiresWholeWords() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    // "one" inside "phone"/"alone" and "up" inside "upgrade" are not whole words.
+    assertEquals(VoiceCommandConfig.Action.NONE, config.getActionForPhrase("phone"));
+    assertEquals(VoiceCommandConfig.Action.NONE, config.getActionForPhrase("alone in the dark"));
+    assertEquals(VoiceCommandConfig.Action.NONE, config.getActionForPhrase("upgrade the app"));
+  }
+
+  @Test
+  public void containsMatch_longestPhraseWins() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    // "profile one" contains the skill word "one" but the longer switch phrase must win.
+    VoiceCommandConfig.Command command = config.getCommandForPhrase("profile one");
+    assertNotNull(command);
+    assertEquals(VoiceCommandConfig.Action.SWITCH_PROFILE, command.action);
+    // Ambiguous same-length matches keep the first configured command (list order): "two one".
+    assertEquals(
+        VoiceCommandConfig.Action.SKILL_1, config.getActionForPhrase("use two one words"));
+  }
+
+  @Test
+  public void containsMatch_requiresPhraseWordsTogether() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    // "cursor" and "mode" must be adjacent to form the "cursor mode" phrase.
+    assertEquals(
+        VoiceCommandConfig.Action.SWITCH_MODE_CURSOR, config.getActionForPhrase("cursor mode on"));
+    assertEquals(
+        VoiceCommandConfig.Action.NONE, config.getActionForPhrase("switch mode to cursor"));
+  }
+
+  @Test
+  public void exactMode_matchesOnlyTheWholePhrase() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    config.setContainsMatchEnabled(false);
+    assertEquals(VoiceCommandConfig.Action.SKILL_1, config.getActionForPhrase("one"));
+    assertEquals(VoiceCommandConfig.Action.NONE, config.getActionForPhrase("skill one"));
+    assertEquals(VoiceCommandConfig.Action.NONE, config.getActionForPhrase("one one"));
+  }
+
+  @Test
+  public void matchingToggles_roundTripThroughSave() {
+    android.content.Context context = ApplicationProvider.getApplicationContext();
+    VoiceCommandConfig config = VoiceCommandConfig.load(context);
+    config.setContainsMatchEnabled(false);
+    config.setQuickFireEnabled(false);
+    config.save(context);
+
+    VoiceCommandConfig reloaded = VoiceCommandConfig.load(context);
+    assertFalse(reloaded.isContainsMatchEnabled());
+    assertFalse(reloaded.isQuickFireEnabled());
   }
 
   private static boolean hasProfileWithId(android.content.Context context, String profileId) {

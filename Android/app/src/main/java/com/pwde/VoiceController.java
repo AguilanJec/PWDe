@@ -31,6 +31,7 @@ import android.speech.SpeechRecognizer;
 import android.util.Log;
 import java.util.ArrayList;
 import java.util.Locale;
+import java.util.function.Predicate;
 
 /**
  * Wraps a {@link SpeechRecognizer} and drives it continuously.
@@ -90,6 +91,17 @@ public final class VoiceController implements RecognitionListener {
   private boolean running;
   private boolean preferOffline = true;
 
+  /**
+   * When set, a live (partial) transcript that satisfies this matcher fires {@link
+   * Listener#onVoiceCommand(String)} right away and the current session is ended, so a skill casts
+   * the moment its word is heard instead of waiting for the utterance to finish. Null disables the
+   * fast path (commands then only fire on final results).
+   */
+  private Predicate<String> quickFireMatcher;
+
+  /** True from the moment a partial match fires until the next session starts; blocks double fires. */
+  private boolean quickFired;
+
   /** True while the current recognizer is the on-device one (Android 12+). */
   private boolean usingOnDevice;
 
@@ -112,6 +124,16 @@ public final class VoiceController implements RecognitionListener {
 
   public boolean isRunning() {
     return running;
+  }
+
+  /**
+   * Enable/disable the fast path: when {@code matcher} is non-null, any live partial transcript it
+   * accepts immediately fires {@link Listener#onVoiceCommand(String)} and ends the current session
+   * (the pending final result is discarded, so a single utterance fires once). Pass {@code null}
+   * to keep firing only on final results.
+   */
+  public void setQuickFireMatcher(Predicate<String> matcher) {
+    quickFireMatcher = matcher;
   }
 
   /** Marks the current session as alive, canceling the unresponsive-recognizer watchdog. */
@@ -337,6 +359,7 @@ public final class VoiceController implements RecognitionListener {
   public void stop() {
     running = false;
     handler.removeCallbacksAndMessages(null);
+    quickFired = false;
     if (recognizer != null) {
       recognizer.cancel();
       recognizer.destroy();
@@ -371,6 +394,7 @@ public final class VoiceController implements RecognitionListener {
     if (!running || recognizer == null) {
       return;
     }
+    quickFired = false;
     try {
       recognizer.cancel();
       recognizer.startListening(buildIntent());
@@ -573,13 +597,25 @@ public final class VoiceController implements RecognitionListener {
   @Override
   public void onPartialResults(Bundle partialResults) {
     noteCallback();
-    // Show partials for diagnostics only; the command fires on the final result so a single
-    // utterance never triggers the action twice.
+    // Show partials for diagnostics; when a matcher is configured the live transcript can also
+    // fire the command immediately (see setQuickFireMatcher) so a skill casts the moment its
+    // word is heard instead of waiting for the final result.
     ArrayList<String> matches =
         partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-    if (matches != null && !matches.isEmpty()) {
-      Log.i(TAG, "heard (partial): " + matches.get(0));
-      listener.onVoicePartial(matches.get(0));
+    if (matches == null || matches.isEmpty()) {
+      return;
+    }
+    String partial = matches.get(0);
+    Log.i(TAG, "heard (partial): " + partial);
+    listener.onVoicePartial(partial);
+    if (quickFireMatcher != null && !quickFired && quickFireMatcher.test(partial)) {
+      quickFired = true;
+      Log.i(TAG, "quick-fire command from live transcript: " + partial);
+      listener.onVoiceCommand(partial);
+      // End this session so the pending final result of the same utterance cannot fire the
+      // command again; a fresh listening session starts after the usual restart delay.
+      recognizer.cancel();
+      scheduleRestart(RESTART_DELAY_MS);
     }
   }
 

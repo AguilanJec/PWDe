@@ -20,6 +20,7 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CompoundButton;
@@ -48,10 +49,15 @@ public final class VoiceConfigActivity extends AppCompatActivity {
 
   private VoiceCommandConfig config;
   private Switch enableSwitch;
+  private Switch containsSwitch;
+  private Switch quickFireSwitch;
 
   /** profile id -> phrase EditText. */
   private final Map<String, EditText> profilePhraseFields = new HashMap<>();
   private final Map<VoiceCommandConfig.Action, EditText> modePhraseFields = new HashMap<>();
+
+  /** skill index -> EditText holding the skill's words (comma-separated). */
+  private final List<EditText> skillPhraseFields = new ArrayList<>();
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -72,8 +78,9 @@ public final class VoiceConfigActivity extends AppCompatActivity {
 
     TextView description = new TextView(this);
     description.setText(
-        "Say \"1\", \"2\", \"3\" to cast skills; \"up/down/left/right\" to steer; and the profile/mode "
-            + "phrases below to switch setups. Requires mic permission and the on-device language pack.");
+        "Bind words to each action below: say a skill's word to tap its button, "
+            + "\"up/down/left/right\" to steer, and a profile/mode phrase to switch setups. "
+            + "Requires mic permission and the on-device language pack.");
     description.setTextColor(getColor(R.color.esports_text_dim));
     root.addView(description);
 
@@ -88,6 +95,43 @@ public final class VoiceConfigActivity extends AppCompatActivity {
             requestMicPermission();
           }
         });
+
+    addSectionTitle(root, "Recognition");
+    TextView recognitionHint = new TextView(this);
+    recognitionHint.setText(
+        "By default a word triggers its action even when it is part of a longer phrase (\"skill "
+            + "one\" or \"one one\" both cast one), and the action fires the moment the word is "
+            + "heard instead of after you finish speaking.");
+    recognitionHint.setTextColor(getColor(R.color.esports_text_dim));
+    root.addView(recognitionHint);
+
+    containsSwitch = new Switch(this);
+    containsSwitch.setText("Match the word anywhere in a phrase");
+    containsSwitch.setChecked(config.isContainsMatchEnabled());
+    root.addView(containsSwitch);
+    TextView containsHint = new TextView(this);
+    containsHint.setText(
+        "On: \"skill one\", \"one one\" and \"cast one now\" all cast one (whole words only — "
+            + "\"alone\" does not). Off: the phrase must equal what you said exactly.");
+    containsHint.setTextColor(getColor(R.color.esports_text_dim));
+    root.addView(containsHint);
+    containsSwitch.setOnCheckedChangeListener(
+        (CompoundButton buttonView, boolean isChecked) ->
+            config.setContainsMatchEnabled(isChecked));
+
+    quickFireSwitch = new Switch(this);
+    quickFireSwitch.setText("Cast the moment the word is heard");
+    quickFireSwitch.setChecked(config.isQuickFireEnabled());
+    root.addView(quickFireSwitch);
+    TextView quickFireHint = new TextView(this);
+    quickFireHint.setText(
+        "On: casting starts while you are still speaking. Off: it waits for the recognizer to "
+            + "finalize the whole utterance, which is slower but never fires on a guess that "
+            + "changes later.");
+    quickFireHint.setTextColor(getColor(R.color.esports_text_dim));
+    root.addView(quickFireHint);
+    quickFireSwitch.setOnCheckedChangeListener(
+        (CompoundButton buttonView, boolean isChecked) -> config.setQuickFireEnabled(isChecked));
 
     addSectionTitle(root, "Spoken phrase to switch profiles");
     ProfileManager profileManager = new ProfileManager(this);
@@ -124,11 +168,34 @@ public final class VoiceConfigActivity extends AppCompatActivity {
       root.addView(phrase);
     }
 
+    addSectionTitle(root, "Words that cast each skill");
+    TextView skillWordsHint = new TextView(this);
+    skillWordsHint.setText(
+        "Type the word(s) you will say to cast each skill, separated by commas "
+            + "(e.g. \"1, one\"). How the words are matched (exact or anywhere in a phrase) and "
+            + "how soon they fire is set under \"Recognition\" above.");
+    skillWordsHint.setTextColor(getColor(R.color.esports_text_dim));
+    root.addView(skillWordsHint);
+
+    for (int i = 0; i < VoiceCommandConfig.SKILL_COUNT; i++) {
+      TextView skillLabel = new TextView(this);
+      skillLabel.setText(ScreenPlacementConfig.SKILL_LABELS[i]);
+      skillLabel.setTextColor(getColor(R.color.esports_text));
+      root.addView(skillLabel);
+
+      EditText words = new EditText(this);
+      words.setSingleLine(true);
+      words.setHint("e.g. " + VoiceCommandConfig.DEFAULT_SKILL_PHRASES[i]);
+      words.setText(TextUtils.join(", ", config.getSkillPhrases(i)));
+      skillPhraseFields.add(words);
+      root.addView(words);
+    }
+
     addSectionTitle(root, "Where the skill buttons sit");
     TextView skillHint = new TextView(this);
     skillHint.setText(
-        "The \"1\"/\"2\"/\"3\" voice commands tap your game's skill buttons. "
-            + "Mark their exact spots on a screen preview instead of typing coordinates.");
+        "Mark where each skill's button sits in your game (which word taps which button "
+            + "is set above) on a screen preview instead of typing coordinates.");
     skillHint.setTextColor(getColor(R.color.esports_text_dim));
     root.addView(skillHint);
 
@@ -147,7 +214,7 @@ public final class VoiceConfigActivity extends AppCompatActivity {
     save.setText("Save");
     save.setOnClickListener(
         v -> {
-          if (!collectSwitchPhrases()) {
+          if (!collectPhrases()) {
             return;
           }
           config.save(this);
@@ -181,18 +248,23 @@ public final class VoiceConfigActivity extends AppCompatActivity {
     return Math.round(value * getResources().getDisplayMetrics().density);
   }
 
-  /** Apply the profile/mode phrases to the config, rejecting duplicate spoken phrases. */
-  private boolean collectSwitchPhrases() {
-    // Phrases already used by fixed commands (skills/joystick) must not be reused. Switch
-    // commands are replaced below, so they are ignored here.
+  /**
+   * Apply the skill/profile/mode words to the config, rejecting duplicate or reserved spoken
+   * words (two commands can never share a phrase, and the joystick words are fixed).
+   */
+  private boolean collectPhrases() {
+    // Joystick steering words are not editable on this screen, so they are reserved.
     Map<String, Boolean> used = new HashMap<>();
     for (VoiceCommandConfig.Command command : config.getCommands()) {
-      if (!command.phrase.isEmpty() && !VoiceCommandConfig.isSwitchAction(command.action)) {
+      if (!command.phrase.isEmpty() && VoiceCommandConfig.isJoystickAction(command.action)) {
         used.put(command.phrase, Boolean.TRUE);
       }
     }
 
     List<String> newPhrases = new ArrayList<>();
+    for (EditText field : skillPhraseFields) {
+      newPhrases.addAll(VoiceCommandConfig.parsePhraseList(field.getText().toString()));
+    }
     newPhrases.addAll(textOf(profilePhraseFields.values()));
     for (EditText field : modePhraseFields.values()) {
       newPhrases.add(field.getText().toString());
@@ -205,14 +277,18 @@ public final class VoiceConfigActivity extends AppCompatActivity {
       if (used.put(normalized, Boolean.TRUE) != null) {
         Toast.makeText(
                 this,
-                "Duplicate spoken phrase \"" + normalized
-                    + "\". Each command needs a different phrase.",
+                "Duplicate spoken word \"" + normalized
+                    + "\". Each command needs a different word.",
                 Toast.LENGTH_SHORT)
             .show();
         return false;
       }
     }
 
+    for (int i = 0; i < skillPhraseFields.size(); i++) {
+      config.setSkillPhrases(
+          i, VoiceCommandConfig.parsePhraseList(skillPhraseFields.get(i).getText().toString()));
+    }
     for (Map.Entry<String, EditText> entry : profilePhraseFields.entrySet()) {
       config.setProfileSwitchPhrase(entry.getKey(), entry.getValue().getText().toString());
     }
