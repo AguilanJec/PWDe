@@ -16,7 +16,7 @@
 -->
 
 
-<com.google.projectgameface.FullScreenCanvas
+<com.pwde.FullScreenCanvas
     android:id="@+id/fullscreenCanvasInner"
     android:layout_height="match_parent"
     android:layout_width="match_parent"

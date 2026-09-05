@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.projectgameface;
+package com.pwde;
 import static androidx.core.math.MathUtils.clamp;
 
 import android.animation.ValueAnimator;
@@ -111,6 +111,10 @@ public class ServiceUiManager {
   public LayoutParams cameraBoxLayoutParams;
 
   public LayoutParams fullScreenCanvasParams;
+
+  /** Virtual-joystick overlay (only rendered in Joystick input mode). */
+  public JoystickOverlayView joystickOverlayView;
+  public LayoutParams joystickLayoutParams;
 
   private final int floatWindowFlags;
   private boolean cameraBoxDraggable = true;
@@ -551,11 +555,56 @@ public class ServiceUiManager {
     }
   }
 
+  private void showJoystick() {
+    if (joystickOverlayView != null) {
+      return;
+    }
+    joystickOverlayView = new JoystickOverlayView(parentContext);
+    joystickLayoutParams =
+        new LayoutParams(
+            LayoutParams.MATCH_PARENT,
+            LayoutParams.MATCH_PARENT,
+            LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            LayoutParams.FLAG_NOT_TOUCHABLE
+                | LayoutParams.FLAG_NOT_FOCUSABLE
+                | LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                | LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT);
+    joystickLayoutParams.gravity = Gravity.TOP | Gravity.START;
+    try {
+      windowManager.addView(joystickOverlayView, joystickLayoutParams);
+    } catch (RuntimeException e) {
+      Log.w(TAG, "windowManager failed to add joystickOverlayView: " + e.getMessage());
+    }
+  }
+
+  public void hideJoystick() {
+    if (joystickOverlayView == null) {
+      return;
+    }
+    try {
+      windowManager.removeView(joystickOverlayView);
+    } catch (RuntimeException e) {
+      Log.w(TAG, "windowManager failed to remove joystickOverlayView, might not attached.");
+    }
+    joystickOverlayView = null;
+    joystickLayoutParams = null;
+  }
+
+  /** Render the joystick base and thumb deflection. Values are in screen pixels. */
+  public void updateJoystick(int cx, int cy, int radius, float offsetX, float offsetY) {
+    if (joystickOverlayView == null) {
+      showJoystick();
+    }
+    joystickOverlayView.setJoystickParams(cx, cy, radius);
+    joystickOverlayView.setThumbOffset(offsetX, offsetY);
+  }
+
   /** Save default camera box position to make it persistent when open the app. */
   private void saveCameraBoxPosition(String key, float value) {
     Log.i(TAG, "saveDefaultPosition: " + key + " " + value);
     SharedPreferences preferences =
-        parentContext.getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        parentContext.getSharedPreferences("PWDeLocalConfig", Context.MODE_PRIVATE);
     SharedPreferences.Editor editor = preferences.edit();
     editor.putFloat(key, value);
     editor.apply();
@@ -648,7 +697,7 @@ public class ServiceUiManager {
         @Override
         public void onReceive(Context context, Intent intent) {
           SharedPreferences preferences =
-              parentContext.getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+              parentContext.getSharedPreferences("PWDeLocalConfig", Context.MODE_PRIVATE);
           float positionX =
               preferences.getFloat(
                   "savedFloatCamXNorm",
@@ -702,7 +751,7 @@ public class ServiceUiManager {
     // Update the camera box location
     // so it not going out of screen when rotate device.
     SharedPreferences preferences =
-        parentContext.getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        parentContext.getSharedPreferences("PWDeLocalConfig", Context.MODE_PRIVATE);
     cameraBoxLayoutParams.x =
         (int)
             (preferences.getFloat(

@@ -31,7 +31,7 @@
         android:textSize="24sp"
         android:layout_marginTop="100dp"
         android:layout_marginStart="38dp"
-        android:textColor="@color/black"
+        android:textColor="@color/esports_text"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -62,7 +62,7 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="#DFDFDF" />
+            android:background="@color/esports_surface_elevated" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -76,8 +76,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Exit"
-                android:background="@color/white"
-                android:textColor="#1967D2"
+                android:background="@color/esports_surface"
+                android:textColor="@color/esports_accent"
                 android:textSize="14sp"/>
 
             <Button
@@ -86,8 +86,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Setting  >"
-                android:background="@color/white"
-                android:textColor="#1967D2"
+                android:background="@color/esports_surface"
+                android:textColor="@color/esports_accent"
                 android:textSize="14sp"/>
 
         </LinearLayout>

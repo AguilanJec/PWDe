@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.projectgameface;
+package com.pwde;
 
 import android.content.Context;
 import android.hardware.camera2.CameraAccessException;
@@ -31,7 +31,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.lifecycle.LifecycleOwner;
 
-/** The camera manager of GameFace app. */
+/** The camera manager of PWDe app. */
 public final class CameraHelper {
   static final String TAG = "CameraHelper";
   public static void bindPreview(

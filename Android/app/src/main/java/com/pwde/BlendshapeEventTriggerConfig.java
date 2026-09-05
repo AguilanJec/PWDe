@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.projectgameface;
+package com.pwde;
 
 import android.content.Context;
 import android.content.Intent;
@@ -28,13 +28,16 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-/** The blendshape event trigger config of Gameface app. */
+/** The blendshape event trigger config of PWDe app. */
 public class BlendshapeEventTriggerConfig {
   private static final String TAG = "BlendshapeEventTriggerConfig";
   private static final int PREFERENCE_INT_NOT_FOUND = -1;
 
   /** Persistent storage on device (Data/data/{app}) */
   SharedPreferences sharedPreferences;
+
+  /** Reads the active profile so config is scoped per-profile. */
+  private final ProfileManager profileManager;
 
   /**
    * Events this app can create. such as touch, swipe or some button action. (created event will be
@@ -178,8 +181,8 @@ public class BlendshapeEventTriggerConfig {
    */
   public BlendshapeEventTriggerConfig(Context context) {
     Log.i(TAG, "Create BlendshapeEventTriggerConfig.");
-    // Create or retrieve SharedPreference.
-    sharedPreferences = context.getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+    profileManager = new ProfileManager(context);
+    openPreferences();
 
     configMap = new HashMap<>();
 
@@ -191,8 +194,15 @@ public class BlendshapeEventTriggerConfig {
     return configMap;
   }
 
+  /** Point {@link #sharedPreferences} at the active profile's config file. */
+  private void openPreferences() {
+    sharedPreferences = profileManager.getConfigSharedPreferences();
+  }
+
   public void updateAllConfigFromSharedPreference() {
     Log.i(TAG, "Update all config from local SharedPreference...");
+    // Re-open so the config always reads from the currently active profile.
+    openPreferences();
     for (EventType eventType : EventType.values()) {
       updateOneConfigFromSharedPreference(eventType.name());
     }
@@ -264,7 +274,7 @@ public class BlendshapeEventTriggerConfig {
   {
     Log.i(TAG, "writeBindingConfig: " + blendshape.toString() +" "+ eventType.toString() + " " + thresholdInUI);
 
-    SharedPreferences preferences = context.getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+    SharedPreferences preferences = new ProfileManager(context).getConfigSharedPreferences();
     SharedPreferences.Editor editor = preferences.edit();
     editor.putInt(eventType.toString(), BLENDSHAPE_FROM_ORDER_IN_UI.indexOf(blendshape));
     editor.putInt(eventType.toString()+"_size", thresholdInUI);

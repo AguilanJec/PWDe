@@ -11,7 +11,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="28dp"
         android:layout_marginTop="28dp"
-        android:src="@drawable/gameface_face"
+        android:src="@mipmap/ic_launcher_playstore"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -75,7 +75,7 @@
         android:layout_marginBottom="40dp"
         android:background="@drawable/round_button_w"
         android:text="Back"
-        android:textColor="#1967d2"
+        android:textColor="@color/esports_accent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

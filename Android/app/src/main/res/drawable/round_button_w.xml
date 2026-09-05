@@ -16,7 +16,7 @@
 -->
 
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#FFFFFF" />
-    <stroke android:width="2dp" android:color="#AEAEAE" />
+    <solid android:color="@color/esports_surface" />
+    <stroke android:width="2dp" android:color="@color/esports_text_dim" />
     <corners android:radius="500dp" />
 </shape>

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.google.projectgameface;
+package com.pwde;
 
 
 import android.Manifest;
@@ -32,6 +32,7 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.WindowManager.LayoutParams;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -41,16 +42,20 @@ import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.app.ActivityCompat;
 import androidx.core.splashscreen.SplashScreen;
 
+import java.util.List;
+
 public class MainActivity extends AppCompatActivity {
 
     private static final int CAMERA_PERMISSION_CODE = 200;
-    private static final String KEY_FIRST_RUN = "GameFaceFirstRun";
+    private static final int MIC_PERMISSION_CODE = 201;
+    private static final String KEY_FIRST_RUN = "PWDeFirstRun";
 
     private final String TAG = "MainActivity";
 
     private Intent cursorServiceIntent;
 
     private SharedPreferences preferences;
+    private ProfileManager profileManager;
     private boolean isServiceBound = false;
     private boolean keep = true;
 
@@ -68,7 +73,8 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         getWindow().addFlags(LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        preferences = getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        preferences = getSharedPreferences("PWDeLocalConfig", Context.MODE_PRIVATE);
+        profileManager = new ProfileManager(this);
         try {
             TextView versionNumber = findViewById(R.id.versionNumber);
             String versionName = getApplicationContext().getPackageManager().getPackageInfo(getApplicationContext().getPackageName(), 0 ).versionName;
@@ -84,29 +90,37 @@ public class MainActivity extends AppCompatActivity {
         }
 
 
-        findViewById(R.id.speedRow).setOnClickListener(v -> {
-            Intent intent = new Intent(this, CursorSpeed.class);
+        findViewById(R.id.controlModuleCard).setOnClickListener(v -> {
+            Intent intent = new Intent(this, ControlActivity.class);
             startActivity(intent);
         });
 
-        findViewById(R.id.bindingRow).setOnClickListener(v -> {
-            Intent intent = new Intent(this, CursorBinding.class);
+        findViewById(R.id.voiceModuleCard).setOnClickListener(v -> {
+            Intent intent = new Intent(this, VoiceActivity.class);
             startActivity(intent);
         });
 
-        findViewById(R.id.bindingRow).setOnClickListener(v -> {
-            Intent intent = new Intent(this, CursorBinding.class);
+        findViewById(R.id.helpModuleCard).setOnClickListener(v -> {
+            Intent intent = new Intent(this, HelpActivity.class);
             startActivity(intent);
         });
 
+        findViewById(R.id.testStationModuleCard).setOnClickListener(v -> {
+            Intent intent = new Intent(this, TestStationActivity.class);
+            startActivity(intent);
+        });
 
         findViewById(R.id.helpButton).setOnClickListener(v -> {
             Intent intent = new Intent(this, TutorialActivity.class);
             startActivity(intent);
         });
 
+        refreshProfileNameText();
+        findViewById(R.id.profileRow).setOnClickListener(v -> showProfileDialog());
+        findViewById(R.id.inputModeRow).setOnClickListener(v -> showInputModeDialog());
 
-        Switch gameFaceToggleSwitch = findViewById(R.id.gameFaceToggleSwitch);
+
+        Switch pwdeToggleSwitch = findViewById(R.id.pwdeToggleSwitch);
 
 
         //Check if service is enabled.
@@ -121,14 +135,14 @@ public class MainActivity extends AppCompatActivity {
                     int stateIndex = intent.getIntExtra("state", CursorAccessibilityService.ServiceState.DISABLE.ordinal());
                     switch (CursorAccessibilityService.ServiceState.values()[stateIndex]) {
                         case ENABLE:
-                            gameFaceToggleSwitch.setChecked(true);
+                            pwdeToggleSwitch.setChecked(true);
                         case PAUSE:
-                            gameFaceToggleSwitch.setChecked(true);
+                            pwdeToggleSwitch.setChecked(true);
                         case GLOBAL_STICK:
-                            gameFaceToggleSwitch.setChecked(true);
+                            pwdeToggleSwitch.setChecked(true);
                             break;
                         case DISABLE:
-                            gameFaceToggleSwitch.setChecked(false);
+                            pwdeToggleSwitch.setChecked(false);
                             break;
                     }
 
@@ -140,9 +154,9 @@ public class MainActivity extends AppCompatActivity {
 
 
         // Toggle switch interaction.
-        gameFaceToggleSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+        pwdeToggleSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if(!checkAccessibilityPermission()){
-                gameFaceToggleSwitch.setChecked(false);
+                pwdeToggleSwitch.setChecked(false);
                 CameraDialog();
             }
             else if(isChecked){
@@ -179,6 +193,132 @@ public class MainActivity extends AppCompatActivity {
 
 
 
+    private void refreshProfileNameText() {
+        ProfileManager.Profile active = profileManager.getActiveProfile();
+        TextView nameText = findViewById(R.id.profileNameText);
+        if (nameText != null) {
+            nameText.setText(active != null ? active.name : "Default");
+        }
+    }
+
+    /** Show the profile switcher / management dialog. */
+    private void showProfileDialog() {
+        List<ProfileManager.Profile> profiles = profileManager.getProfiles();
+        ProfileManager.Profile active = profileManager.getActiveProfile();
+        CharSequence[] names = new CharSequence[profiles.size()];
+        int activeIndex = 0;
+        for (int i = 0; i < profiles.size(); i++) {
+            names[i] = profiles.get(i).name;
+            if (active != null && profiles.get(i).id.equals(active.id)) {
+                activeIndex = i;
+            }
+        }
+        if (profiles.isEmpty()) {
+            onNewProfile();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+            .setTitle("Choose profile")
+            .setSingleChoiceItems(names, activeIndex, (dialog, which) -> {
+                ProfileManager.Profile selected = profiles.get(which);
+                if (active == null || !selected.id.equals(active.id)) {
+                    profileManager.setActiveProfile(selected.id);
+                    onActiveProfileChanged();
+                }
+                dialog.dismiss();
+            })
+            .setPositiveButton("New", (d, w) -> onNewProfile())
+            .setNeutralButton("Rename", (d, w) -> onRenameProfile())
+            .setNegativeButton("Delete", (d, w) -> onDeleteProfile())
+            .show();
+    }
+
+    private void onNewProfile() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+        input.setText("Profile " + (profileManager.getProfiles().size() + 1));
+        new AlertDialog.Builder(this)
+            .setTitle("New profile")
+            .setView(input)
+            .setPositiveButton("Create", (d, w) -> {
+                String id = profileManager.createProfile(input.getText().toString());
+                profileManager.setActiveProfile(id);
+                onActiveProfileChanged();
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private void onRenameProfile() {
+        ProfileManager.Profile active = profileManager.getActiveProfile();
+        if (active == null) {
+            return;
+        }
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+        input.setText(active.name);
+        input.setSelection(active.name.length());
+        new AlertDialog.Builder(this)
+            .setTitle("Rename profile")
+            .setView(input)
+            .setPositiveButton("Save", (d, w) -> {
+                profileManager.renameProfile(active.id, input.getText().toString());
+                onActiveProfileChanged();
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private void onDeleteProfile() {
+        ProfileManager.Profile active = profileManager.getActiveProfile();
+        if (active == null) {
+            return;
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("Delete profile")
+            .setMessage("Delete \"" + active.name + "\"?")
+            .setPositiveButton("Delete", (d, w) -> {
+                profileManager.deleteProfile(active.id);
+                onActiveProfileChanged();
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    /** Refresh the UI and tell the accessibility service to reload for the active profile. */
+    private void onActiveProfileChanged() {
+        refreshProfileNameText();
+        refreshInputModeText();
+        sendBroadcast(new Intent("LOAD_PROFILE"));
+    }
+
+    private void refreshInputModeText() {
+        InputModeConfig.InputMode mode = InputModeConfig.getInputMode(this);
+        ((TextView) findViewById(R.id.inputModeValue)).setText(InputModeConfig.getDisplayName(mode));
+    }
+
+    private void showInputModeDialog() {
+        InputModeConfig.InputMode[] modes = InputModeConfig.InputMode.values();
+        String[] labels = new String[modes.length];
+        for (int i = 0; i < modes.length; i++) {
+            labels[i] = InputModeConfig.getDisplayName(modes[i]);
+        }
+        int checked = InputModeConfig.getInputMode(this).ordinal();
+        new AlertDialog.Builder(this)
+                .setTitle("Input mode")
+                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                    InputModeConfig.setInputMode(this, modes[which]);
+                    refreshInputModeText();
+                    sendBroadcast(new Intent("LOAD_PROFILE"));
+                    dialog.dismiss();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
     private void setupUi(){
 
 
@@ -196,6 +336,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshProfileNameText();
+        refreshInputModeText();
         if(!isFirstLaunch()){
             CameraDialog();
         }
@@ -210,11 +352,23 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == CAMERA_PERMISSION_CODE && checkCameraPermission()) {
+            // Continue the enable flow once the camera is granted.
+            wakeUpService();
+        } else if (requestCode == MIC_PERMISSION_CODE) {
+            // Continue even when denied: main controls still work, voice stays disabled.
+            wakeUpService();
+        }
+    }
+
     private void CameraDialog() {
         // Check Camera Permission
         if(!checkCameraPermission()){
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            String alertMsg = "Allow Project GameFace to access \nthe camera?";
+            String alertMsg = "Allow PWDe to access \nthe camera?";
             builder.setTitle("Access Camera");
             builder.setMessage(alertMsg);
             builder.setPositiveButton("Allow", (dialog, which) -> {
@@ -250,7 +404,7 @@ public class MainActivity extends AppCompatActivity {
         if(!checkAccessibilityPermission()){
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
             String alertMsg = "Full control is appropriate for apps \nthat help you with accessibility \nneeds, but not for most apps.";
-            builder.setTitle("Allow Project GameFace to have full control of your device?");
+            builder.setTitle("Allow PWDe to have full control of your device?");
             builder.setMessage(alertMsg);
             builder.setPositiveButton("Allow", (dialog, which) -> {
                 RequestAccessibilityPermission();
@@ -290,7 +444,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void wakeUpService(){
         Log.i(TAG, "MainActivity wakeUpService");
-        findViewById(R.id.gameFaceToggleSwitch).setEnabled(false);
+        findViewById(R.id.pwdeToggleSwitch).setEnabled(false);
         if (!checkAccessibilityPermission()){
             Log.i(TAG, "MainActivity RequestAccessibilityPermission");
             RequestAccessibilityPermission();
@@ -299,6 +453,11 @@ public class MainActivity extends AppCompatActivity {
         if (!checkCameraPermission()){
             Log.i(TAG, "MainActivity RequestCameraPermission");
             RequestCameraPermission();
+            return;
+        }
+        if (VoiceCommandConfig.load(this).isEnabled() && !checkMicPermission()){
+            Log.i(TAG, "MainActivity RequestMicrophonePermission (voice enabled)");
+            MicDialog();
             return;
         }
 
@@ -314,11 +473,11 @@ public class MainActivity extends AppCompatActivity {
 
         Intent intentFlyOut = new Intent("FLY_OUT_FLOAT_WINDOW");
         sendBroadcast(intentFlyOut);
-        findViewById(R.id.gameFaceToggleSwitch).setEnabled(true);
+        findViewById(R.id.pwdeToggleSwitch).setEnabled(true);
     }
     public void sleepCursorService(){
         Log.i(TAG, "sleepCursorService");
-        findViewById(R.id.gameFaceToggleSwitch).setEnabled(false);
+        findViewById(R.id.pwdeToggleSwitch).setEnabled(false);
         // Send broadcast to stop service (sleep mode).
         Intent intent = new Intent("CHANGE_SERVICE_STATE");
         intent.putExtra("state", CursorAccessibilityService.ServiceState.DISABLE.ordinal());
@@ -327,19 +486,19 @@ public class MainActivity extends AppCompatActivity {
             isServiceBound = false;
         }
         cursorServiceIntent = null;
-        findViewById(R.id.gameFaceToggleSwitch).setEnabled(true);
+        findViewById(R.id.pwdeToggleSwitch).setEnabled(true);
 
     }
 
     public boolean checkAccessibilityPermission() {
         int enabled = 0;
-        final String gamefaceServiceName = this.getPackageName()
+        final String pwdeServiceName = this.getPackageName()
             + "/"
             + this.getPackageName()
             + "."
             + CursorAccessibilityService.class.getSimpleName();
 
-        Log.i(TAG, "GameFace service name: "+gamefaceServiceName);
+        Log.i(TAG, "PWDe service name: "+pwdeServiceName);
 
         try {
             enabled = Settings.Secure.getInt(
@@ -361,7 +520,7 @@ public class MainActivity extends AppCompatActivity {
                 splitter.setString(allAccessibilityServices);
                 while (splitter.hasNext()) {
                     String accessibilityService = splitter.next();
-                    if (accessibilityService.equalsIgnoreCase(gamefaceServiceName)) {
+                    if (accessibilityService.equalsIgnoreCase(pwdeServiceName)) {
                         return true;
                     }
                 }
@@ -393,6 +552,49 @@ public class MainActivity extends AppCompatActivity {
         ActivityCompat.requestPermissions(this, new String[]{
                 Manifest.permission.CAMERA
         },CAMERA_PERMISSION_CODE);
+    }
+
+    public boolean checkMicPermission()
+    {
+        return ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Ask for the microphone permission needed by the voice controls. */
+    public void MicDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        String alertMsg = "Allow PWDe to use the microphone\nfor voice controls?";
+        builder.setTitle("Access Microphone");
+        builder.setMessage(alertMsg);
+        builder.setPositiveButton("Allow", (dialog, which) -> {
+            RequestMicrophonePermission();
+            dialog.dismiss();
+        });
+        builder.setNegativeButton("Deny", (dialog, which) -> {
+            dialog.cancel();
+            Intent intent = new Intent(getBaseContext(), GrantPermissionActivity.class);
+            intent.putExtra("permission", "grantMicrophone");
+            startActivity(intent);
+        });
+        AlertDialog alertDialog = builder.create();
+        alertDialog.setOnShowListener(dialogInterface -> {
+            Button positiveButton = alertDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            positiveButton.setTextColor(getResources().getColor(R.color.blue));
+            Button negativeButton = alertDialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            negativeButton.setTextColor(getResources().getColor(R.color.blue));
+        });
+        alertDialog.setCanceledOnTouchOutside(false);
+        alertDialog.show();
+        Button positiveButton = alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
+        positiveButton.setTransformationMethod(null);
+        Button negativeButton = alertDialog.getButton(DialogInterface.BUTTON_NEGATIVE);
+        negativeButton.setTransformationMethod(null);
+    }
+
+    public void RequestMicrophonePermission()
+    {
+        ActivityCompat.requestPermissions(this, new String[]{
+                Manifest.permission.RECORD_AUDIO
+        },MIC_PERMISSION_CODE);
     }
 
 

@@ -22,11 +22,11 @@ project.ext.ASSET_DIR = projectDir.toString() + '/src/main/assets'
 
 
 android {
-    namespace 'com.google.projectgameface'
+    namespace 'com.pwde'
     compileSdk 34
 
     defaultConfig {
-        applicationId 'com.google.projectgameface'
+        applicationId 'com.pwde'
         minSdk 27
         targetSdk 34
         versionCode 31

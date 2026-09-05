@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.projectgameface;
+package com.pwde;
 
 import android.app.Activity;
 import android.app.Application;
@@ -23,7 +23,7 @@ import android.content.SharedPreferences;
 import android.widget.SeekBar;
 
 import androidx.test.core.app.ApplicationProvider;
-import com.google.projectgameface.R;
+import com.pwde.R;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -82,8 +82,7 @@ public class GestureSizeActivityTest {
   @Test
   public void changeGesture_newGestureAndGestureSize_getGestureSizeIntValue() {
     SharedPreferences preferences =
-        ApplicationProvider.getApplicationContext()
-            .getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        new ProfileManager(ApplicationProvider.getApplicationContext()).getConfigSharedPreferences();
 
     activityCursorBinding.findViewById(R.id.tapLayout).performClick();
     Shadows.shadowOf((Application) ApplicationProvider.getApplicationContext()).getNextStartedActivity();
@@ -102,8 +101,6 @@ public class GestureSizeActivityTest {
     SeekBar gestureSizeBar = activityGestureSize.findViewById(R.id.gestureSizeSeekBar);
     int gestureSizeBarValue = gestureSizeBar.getProgress();
     activityGestureSize.findViewById(R.id.doneBtn).performClick();
-    activityGestureSize.saveGestureSelect(
-        action, action + "_size", selectedGesture, gestureSizeBarValue * 10);
     int savedTouchGestureSize = preferences.getInt(action + "_size", 0);
 
     assertEquals(savedTouchGestureSize, 30);

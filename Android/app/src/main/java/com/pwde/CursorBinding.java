@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.google.projectgameface;
+package com.pwde;
 
 
 import android.content.Context;
@@ -33,7 +33,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 
-/** The cursor binding activity of Gameface app. */
+/** The cursor binding activity of PWDe app. */
 public class CursorBinding extends AppCompatActivity {
 
     private static final String TAG = "GestureSizeActivity";
@@ -80,7 +80,7 @@ public class CursorBinding extends AppCompatActivity {
         TextView textViewAction,
         TextView textViewStatus,
         ImageView statusImage) {
-        SharedPreferences preferences = getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        SharedPreferences preferences = new ProfileManager(this).getConfigSharedPreferences();
 
         // Load config from local sharedpref.
         BlendshapeEventTriggerConfig.Blendshape savedBlendshape = BlendshapeEventTriggerConfig.BLENDSHAPE_FROM_ORDER_IN_UI

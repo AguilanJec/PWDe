@@ -13,9 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.projectgameface;
+package com.pwde;
 
-import android.content.Context;
 import android.content.SharedPreferences;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -40,8 +39,7 @@ public class CursorMovementConfigTest {
 
     // Try edit the local preference.
     SharedPreferences preferences =
-        ApplicationProvider.getApplicationContext()
-            .getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        new ProfileManager(ApplicationProvider.getApplicationContext()).getConfigSharedPreferences();
     SharedPreferences.Editor editor = preferences.edit();
     editor.putInt(CursorMovementConfig.CursorMovementConfigType.UP_SPEED.toString(), 7);
     editor.apply();

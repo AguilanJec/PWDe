@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.projectgameface;
+package com.pwde;
 
 import android.app.Activity;
 import android.app.Application;
@@ -34,7 +34,7 @@ import static org.junit.Assert.assertEquals;
 @RunWith(AndroidJUnit4.class)
 public class CursorBindingTest {
     private final Activity activityCursorBinding = Robolectric.buildActivity(CursorBinding.class).create().get();
-    SharedPreferences preferences = ApplicationProvider.getApplicationContext().getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+    SharedPreferences preferences = new ProfileManager(ApplicationProvider.getApplicationContext()).getConfigSharedPreferences();
 
     @Test
     public void selectActionBinding_tapToChooseGestureActivity() {

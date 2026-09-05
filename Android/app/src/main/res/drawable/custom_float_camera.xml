@@ -21,7 +21,7 @@
             <solid android:color="@android:color/transparent" />
             <stroke
                 android:width="5dp"
-            android:color="#A8C7FA" />
+            android:color="@color/esports_surface_elevated" />
         </shape>
     </item>
 

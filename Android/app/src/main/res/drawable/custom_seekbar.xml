@@ -19,14 +19,14 @@
     <!-- Background track -->
     <item android:id="@android:id/background">
         <shape>
-            <solid android:color="#d2e3fc" /> <!-- Background color -->
+            <solid android:color="@color/esports_surface_elevated" /> <!-- Background color -->
         </shape>
     </item>
     <!-- Progress track -->
     <item android:id="@android:id/progress">
         <clip>
             <shape>
-                <solid android:color="#1a73e8" /> <!-- Progress color -->
+                <solid android:color="@color/esports_accent" /> <!-- Progress color -->
             </shape>
         </clip>
     </item>

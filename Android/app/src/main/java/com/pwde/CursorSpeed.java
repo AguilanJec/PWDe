@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.google.projectgameface;
+package com.pwde;
 
 import android.content.Context;
 import android.content.Intent;
@@ -27,11 +27,11 @@ import android.view.View.OnClickListener;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
-import com.google.projectgameface.R;
+import com.pwde.R;
 
 import java.util.Objects;
 
-/** The cursor speed activity of Gameface app. */
+/** The cursor speed activity of PWDe app. */
 public class CursorSpeed extends AppCompatActivity {
 
     protected static final int SEEK_BAR_MAXIMUM_VALUE = 10;
@@ -130,7 +130,7 @@ public class CursorSpeed extends AppCompatActivity {
     private void setUpSeekBarAndTextView(SeekBar seekBar, TextView textView, String preferencesId) {
         seekBar.setMax(SEEK_BAR_MAXIMUM_VALUE);
         seekBar.setMin(SEEK_BAR_MINIMUM_VALUE);
-        SharedPreferences preferences = getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        SharedPreferences preferences = new ProfileManager(this).getConfigSharedPreferences();
         int savedProgress;
         if (Objects.equals(preferencesId, CursorMovementConfig.CursorMovementConfigType.SMOOTH_POINTER.toString())) {
             savedProgress = preferences.getInt(preferencesId, CursorMovementConfig.InitialRawValue.SMOOTH_POINTER);
@@ -315,7 +315,7 @@ public class CursorSpeed extends AppCompatActivity {
         };
 
     private void saveCursorSpeed(String key, int value) {
-        SharedPreferences preferences = getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        SharedPreferences preferences = new ProfileManager(this).getConfigSharedPreferences();
         SharedPreferences.Editor editor = preferences.edit();
         editor.putInt(key, value);
         editor.apply();

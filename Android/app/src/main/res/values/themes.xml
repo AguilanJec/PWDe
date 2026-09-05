@@ -15,20 +15,33 @@
 -->
 
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.Light">
+    <!-- Base application theme: Material dark (esports palette). -->
+    <style name="AppTheme" parent="Theme.AppCompat">
+        <item name="android:windowBackground">@color/esports_bg</item>
+        <item name="android:colorBackground">@color/esports_bg</item>
+        <item name="android:textColor">@color/esports_text</item>
+        <item name="android:textColorHint">@color/esports_text_dim</item>
+        <item name="android:statusBarColor">@color/esports_bg</item>
+        <item name="android:navigationBarColor">@color/esports_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="android:buttonStyle">@style/MyButtonStyle</item>
-        <item name="android:textColor">#202124</item>
-        <item name="colorPrimary">@color/white</item>
+        <item name="colorPrimary">@color/esports_bg</item>
+        <item name="colorPrimaryDark">@color/esports_bg</item>
+        <item name="colorAccent">@color/esports_accent</item>
+        <item name="colorControlActivated">@color/esports_accent</item>
+        <item name="colorControlNormal">@color/esports_text_dim</item>
+        <item name="colorButtonNormal">@color/esports_surface</item>
     </style>
 
     <style name="MyButtonStyle" parent="Widget.AppCompat.Button">
-        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textColor">@color/esports_text</item>
+        <item name="android:minHeight">54dp</item>
+        <item name="android:minWidth">120dp</item>
     </style>
 
-    <style name="MySwitch" parent="Theme.AppCompat.Light">
+    <style name="MySwitch" parent="Theme.AppCompat">
         <!-- active thumb & track color (30% transparency) -->
-        <item name="colorControlActivated">@color/blue</item>
+        <item name="colorControlActivated">@color/esports_accent</item>
 
         <!-- inactive thumb color -->
         <item name="colorSwitchThumbNormal">#f1f1f1
@@ -41,8 +54,8 @@
 
 
     <style name="Theme.App.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/white</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/gameface_face_splash</item>
+        <item name="windowSplashScreenBackground">@color/esports_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_playstore</item>
         <item name="postSplashScreenTheme">@style/AppTheme</item>
         <item name="windowSplashScreenAnimationDuration">1000</item>
     </style>

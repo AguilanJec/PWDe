@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.google.projectgameface;
+package com.pwde;
 
 import android.util.Log;
 import android.view.MenuItem;
@@ -141,7 +141,7 @@ public class ChooseGestureActivity extends AppCompatActivity {
     private void checkGestureButtonInUse(BlendshapeEventTriggerConfig.EventType pageEventType){
 
 
-        SharedPreferences preferences = getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        SharedPreferences preferences = new ProfileManager(this).getConfigSharedPreferences();
 
         // Big layout contain face gesture buttons.
         ConstraintLayout gestureLayout = findViewById(R.id.gestureLayout);
@@ -214,7 +214,7 @@ public class ChooseGestureActivity extends AppCompatActivity {
         setContentView(R.layout.activity_choose_gesture);
         getWindow().addFlags(LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        SharedPreferences preferences = getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        SharedPreferences preferences = new ProfileManager(this).getConfigSharedPreferences();
 
         pageEventType = (BlendshapeEventTriggerConfig.EventType) getIntent().getSerializableExtra("eventType");
 

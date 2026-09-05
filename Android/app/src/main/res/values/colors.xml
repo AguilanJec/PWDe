@@ -20,4 +20,13 @@
     <color name="white">#FFFFFFFF</color>
     <color name="blue">#1967D2</color>
     <color name="light_blue">#E9EEF6</color>
+
+    <!-- Esports-for-PWDs high-contrast Material dark palette -->
+    <color name="esports_bg">#10131A</color>
+    <color name="esports_surface">#1A1F2B</color>
+    <color name="esports_surface_elevated">#232936</color>
+    <color name="esports_accent">#00E5A0</color>
+    <color name="esports_accent_2">#32D4FF</color>
+    <color name="esports_text">#E6E9EF</color>
+    <color name="esports_text_dim">#A8B0BD</color>
 </resources>

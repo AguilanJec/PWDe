@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.projectgameface;
+package com.pwde;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -41,8 +41,11 @@ class CursorMovementConfig {
   private static final String TAG = "CursorMovementConfig";
   private static final int PREFERENCE_INT_NOT_FOUND = -1;
 
-  /** Persistent storage on device (Data/data/{app}) */
+  /** Persistent storage on device (Data/data/{app}). */
   SharedPreferences sharedPreferences;
+
+  /** Reads the active profile so config is scoped per-profile. */
+  private final ProfileManager profileManager;
 
   /** Raw int value, same as the UI's slider. */
   private final Map<CursorMovementConfigType, Integer> rawValueMap;
@@ -79,8 +82,8 @@ class CursorMovementConfig {
 
     Log.i(TAG, "Create CursorMovementConfig.");
 
-    // Create or retrieve SharedPreference.
-    sharedPreferences = context.getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+    profileManager = new ProfileManager(context);
+    openPreferences();
 
     // Initialize default slider values.
     rawValueMap = new HashMap<>();
@@ -150,9 +153,16 @@ class CursorMovementConfig {
     return (float) rawValue * multiplier;
   }
 
+  /** Point {@link #sharedPreferences} at the active profile's config file. */
+  private void openPreferences() {
+    sharedPreferences = profileManager.getConfigSharedPreferences();
+  }
+
   /** Update and overwrite value from SharedPreference. */
   public void updateAllConfigFromSharedPreference() {
     Log.i(TAG, "Update all config from local SharedPreference...");
+    // Re-open so the config always reads from the currently active profile.
+    openPreferences();
     for (CursorMovementConfigType configType : CursorMovementConfigType.values()) {
       updateOneConfigFromSharedPreference(configType.name());
     }

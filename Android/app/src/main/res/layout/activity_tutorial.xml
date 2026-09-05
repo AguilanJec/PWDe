@@ -21,7 +21,7 @@
     android:id="@+id/scrollView2"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FFFFFF"
+    android:background="@color/esports_bg"
     tools:context=".TutorialActivity">
 
     <ImageView
@@ -30,7 +30,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="28dp"
         android:layout_marginTop="28dp"
-        android:src="@drawable/gameface_face"
+        android:src="@mipmap/ic_launcher_playstore"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -53,7 +53,7 @@
         android:layout_marginTop="20dp"
         android:layout_marginEnd="10dp"
         android:singleLine="false"
-        android:text="Project Gameface helps you control your phone using facial gestures and head movements. You can learn how to set up gestures in the tutorial video."
+        android:text="PWDe helps you control your phone using facial gestures and head movements. You can learn how to set up gestures in the tutorial video."
         android:textSize="16sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.0"

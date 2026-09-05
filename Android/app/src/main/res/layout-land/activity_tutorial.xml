@@ -30,7 +30,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="28dp"
         android:layout_marginTop="28dp"
-        android:src="@drawable/gameface_face"
+        android:src="@mipmap/ic_launcher_playstore"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -52,7 +52,7 @@
         android:layout_marginEnd="10dp"
         android:lines="2"
         android:singleLine="false"
-        android:text="Project Gameface helps you control your phone using facial gestures and head movements. You can learn how to set up gestures in the tutorial video."
+        android:text="PWDe helps you control your phone using facial gestures and head movements. You can learn how to set up gestures in the tutorial video."
         android:textSize="16sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.0"

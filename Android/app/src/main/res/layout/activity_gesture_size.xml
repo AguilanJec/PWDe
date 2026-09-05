@@ -42,7 +42,7 @@
         android:layout_marginStart="10dp"
         android:layout_marginTop="40dp"
         android:layout_marginEnd="10dp"
-        android:background="#E9F1FC"
+        android:background="@color/esports_surface"
         android:orientation="vertical"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -67,7 +67,7 @@
         android:layout_height="64dp"
         android:lines="3"
         android:text="When you perform the gesture, it will register below. To find the right sensitivity for you, adjust the slider to match the length of the green line."
-        android:textColor="#868686"
+        android:textColor="@color/esports_text_dim"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/gestureSizeTitle" />
@@ -93,7 +93,7 @@
         android:layout_height="wrap_content"
         android:maxHeight="3dp"
         android:progressDrawable="@drawable/custom_seekbar"
-        android:thumbTint="#1a73e8"
+        android:thumbTint="@color/esports_accent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
@@ -110,7 +110,7 @@
         android:paddingRight="10dp"
         android:paddingBottom="5dp"
         android:text="Smaller"
-        android:textColor="#444746"
+        android:textColor="@color/esports_text"
         app:layout_constraintStart_toStartOf="@+id/gestureSizeSeekBar"
         app:layout_constraintTop_toBottomOf="@+id/gestureSizeSeekBar" />
 
@@ -125,7 +125,7 @@
         android:paddingRight="10dp"
         android:paddingBottom="5dp"
         android:text="Bigger"
-        android:textColor="#444746"
+        android:textColor="@color/esports_text"
         app:layout_constraintEnd_toEndOf="@+id/gestureSizeSeekBar"
         app:layout_constraintTop_toBottomOf="@+id/gestureSizeSeekBar" />
 
@@ -150,7 +150,7 @@
         android:background="@drawable/round_button_w"
         android:text="Back"
         android:textAllCaps="false"
-        android:textColor="#1967d2"
+        android:textColor="@color/esports_accent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 

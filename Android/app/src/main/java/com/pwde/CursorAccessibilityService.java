@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.google.projectgameface;
+package com.pwde;
 
 import static java.lang.Math.max;
 import static java.lang.Math.round;
@@ -48,11 +48,15 @@ import androidx.lifecycle.LifecycleRegistry;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+
+import java.util.ArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** The cursor service of GameFace app. */
+/** The cursor service of PWDe app. */
 @SuppressLint("UnprotectedReceiver") // All of the broadcasts can only be sent by system.
 public class CursorAccessibilityService extends AccessibilityService implements LifecycleOwner {
     private static final String TAG = "CursorAccessibilityService";
@@ -70,6 +74,10 @@ public class CursorAccessibilityService extends AccessibilityService implements 
     private static final int IMAGE_ANALYZER_HEIGHT = 400;
     ServiceUiManager serviceUiManager;
     public CursorController cursorController;
+    private JoystickController joystickController;
+    private InputModeConfig.InputMode inputMode = InputModeConfig.InputMode.CURSOR;
+    private VoiceController voiceController;
+    private VoiceCommandConfig voiceConfig;
     private FaceLandmarkerHelper facelandmarkerHelper;
     public WindowManager windowManager;
     private Handler tickFunctionHandler;
@@ -88,6 +96,7 @@ public class CursorAccessibilityService extends AccessibilityService implements 
     private BroadcastReceiver loadSharedConfigBasicReceiver;
     private BroadcastReceiver loadSharedConfigGestureReceiver;
     private BroadcastReceiver enableScorePreviewReceiver;
+    private BroadcastReceiver loadProfileReceiver;
 
     /** This is state of cursor. */
     public enum ServiceState {
@@ -175,6 +184,18 @@ public class CursorAccessibilityService extends AccessibilityService implements 
                 }
             };
 
+        loadProfileReceiver =
+            new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    Log.i(TAG, "loadProfileReceiver: reloading configs for active profile");
+                    cursorController.cursorMovementConfig.updateAllConfigFromSharedPreference();
+                    cursorController.blendshapeEventTriggerConfig.updateAllConfigFromSharedPreference();
+                    reloadInputMode();
+                    reloadVoiceConfig();
+                }
+            };
+
         if (VERSION.SDK_INT >= VERSION_CODES.TIRAMISU) {
             registerReceiver(
                 changeServiceStateReceiver, new IntentFilter("CHANGE_SERVICE_STATE"), RECEIVER_EXPORTED);
@@ -193,6 +214,8 @@ public class CursorAccessibilityService extends AccessibilityService implements 
             registerReceiver(
                 enableScorePreviewReceiver, new IntentFilter("ENABLE_SCORE_PREVIEW"), RECEIVER_EXPORTED);
             registerReceiver(
+                loadProfileReceiver, new IntentFilter("LOAD_PROFILE"), RECEIVER_EXPORTED);
+            registerReceiver(
                 serviceUiManager.flyInWindowReceiver,
                 new IntentFilter("FLY_IN_FLOAT_WINDOW"),
                 RECEIVER_EXPORTED);
@@ -207,6 +230,7 @@ public class CursorAccessibilityService extends AccessibilityService implements 
             registerReceiver(
                 loadSharedConfigGestureReceiver, new IntentFilter("LOAD_SHARED_CONFIG_GESTURE"));
             registerReceiver(enableScorePreviewReceiver, new IntentFilter("ENABLE_SCORE_PREVIEW"));
+            registerReceiver(loadProfileReceiver, new IntentFilter("LOAD_PROFILE"));
             registerReceiver(
                 serviceUiManager.flyInWindowReceiver, new IntentFilter("FLY_IN_FLOAT_WINDOW"));
             registerReceiver(
@@ -235,6 +259,11 @@ public class CursorAccessibilityService extends AccessibilityService implements 
 
         cursorController = new CursorController(this);
         serviceUiManager = new ServiceUiManager(this, windowManager);
+
+        joystickController = new JoystickController(this, serviceUiManager);
+        reloadInputMode();
+        voiceConfig = VoiceCommandConfig.load(this);
+        voiceController = new VoiceController(this, this::onVoiceCommand);
 
         screenSize = new Point();
         windowManager.getDefaultDisplay().getRealSize(screenSize);
@@ -290,6 +319,7 @@ public class CursorAccessibilityService extends AccessibilityService implements 
                 if (facelandmarkerHelper == null) {
                     // Back-off.
                     tickFunctionHandler.postDelayed(this, CursorAccessibilityService.UI_UPDATE);
+                    return;
                 }
 
                 switch (serviceState) {
@@ -297,6 +327,11 @@ public class CursorAccessibilityService extends AccessibilityService implements 
                         if (shouldSendScore) {
                             sendBroadcastScore();
                         }
+                        // Testing/config screens only need the score broadcasts; do NOT fall
+                        // through into ENABLE and dispatch cursor/gesture events while they are
+                        // open (this previously made the station react to head movement and
+                        // could trigger actions while the user was speaking).
+                        break;
                     case ENABLE:
                         // Drag drag line if in drag mode.
                         if (cursorController.isDragging) {
@@ -307,16 +342,24 @@ public class CursorAccessibilityService extends AccessibilityService implements 
                         int gapFrames =
                             round(max(((float) facelandmarkerHelper.gapTimeMs / (float) UI_UPDATE), 1.0f));
 
-                        cursorController.updateInternalCursorPosition(
-                            facelandmarkerHelper.getHeadCoordXY(),
-                            gapFrames,screenSize.x,screenSize.y
-                        );
-
-
-                        // Actually update the UI cursor image.
-                        serviceUiManager.updateCursorImagePositionOnScreen(
-                            cursorController.getCursorPositionXY()
+                        if (inputMode == InputModeConfig.InputMode.JOYSTICK) {
+                            joystickController.update(
+                                facelandmarkerHelper.getHeadCoordXY(),
+                                facelandmarkerHelper.mpInputWidth,
+                                facelandmarkerHelper.mpInputHeight,
+                                screenSize.x,
+                                screenSize.y);
+                        } else {
+                            cursorController.updateInternalCursorPosition(
+                                facelandmarkerHelper.getHeadCoordXY(),
+                                gapFrames, screenSize.x, screenSize.y
                             );
+
+                            // Actually update the UI cursor image.
+                            serviceUiManager.updateCursorImagePositionOnScreen(
+                                cursorController.getCursorPositionXY()
+                            );
+                        }
 
                         dispatchEvent();
 
@@ -382,9 +425,15 @@ public class CursorAccessibilityService extends AccessibilityService implements 
             });
     }
 
-    /** Send out blendshape score for visualize in setting page.*/
+    /** Send out blendshape score for visualize in setting page. */
     private void sendBroadcastScore() {
         if (!shouldSendScore) {
+            return;
+        }
+
+        // " * " requests all scores at once (used by the testing station).
+        if ("*".equals(requestedScoreBlendshapeName)) {
+            sendAllBlendshapeScores();
             return;
         }
 
@@ -400,6 +449,34 @@ public class CursorAccessibilityService extends AccessibilityService implements 
         } catch (IllegalArgumentException e) {
             Log.w(TAG, "No Blendshape named " + requestedScoreBlendshapeName);
         }
+    }
+
+    /** Broadcast live blendshape, head-position and face-visibility values to the UI. */
+    private void sendAllBlendshapeScores() {
+        BlendshapeEventTriggerConfig.Blendshape[] shapes =
+            BlendshapeEventTriggerConfig.Blendshape.values();
+        ArrayList<String> names = new ArrayList<>();
+        ArrayList<Float> scores = new ArrayList<>();
+        float[] blendshapes = facelandmarkerHelper.getBlendshapes();
+        for (BlendshapeEventTriggerConfig.Blendshape shape : shapes) {
+            if (shape == BlendshapeEventTriggerConfig.Blendshape.NONE) {
+                continue;
+            }
+            names.add(shape.name());
+            scores.add(blendshapes[shape.value]);
+        }
+        float[] scoreArray = new float[scores.size()];
+        for (int i = 0; i < scores.size(); i++) {
+            scoreArray[i] = scores.get(i);
+        }
+        Intent intent = new Intent("BLENDSHAPE_SCORES");
+        intent.putExtra("names", names.toArray(new String[0]));
+        intent.putExtra("scores", scoreArray);
+        float[] headCoord = facelandmarkerHelper.getHeadCoordXY();
+        intent.putExtra("headX", headCoord[0] / facelandmarkerHelper.mpInputWidth);
+        intent.putExtra("headY", headCoord[1] / facelandmarkerHelper.mpInputHeight);
+        intent.putExtra("faceVisible", facelandmarkerHelper.isFaceVisible);
+        sendBroadcast(intent);
     }
 
     private void sendBroadcastServiceState(String state) {
@@ -428,16 +505,16 @@ public class CursorAccessibilityService extends AccessibilityService implements 
             case ENABLE:
                 // Already enable, goto pause mode.
                 serviceState = ServiceState.PAUSE;
-                serviceUiManager.hideCursor();
                 break;
 
             case PAUSE:
                 // In pause mode, enable it.
                 serviceState = ServiceState.ENABLE;
-                serviceUiManager.showCursor();
                 break;
             default:
         }
+        applyInputModeUi();
+        updateVoiceState();
         serviceUiManager.setCameraBoxDraggable(true);
     }
 
@@ -460,9 +537,11 @@ public class CursorAccessibilityService extends AccessibilityService implements 
         }
         serviceState = ServiceState.GLOBAL_STICK;
         serviceUiManager.setCameraBoxDraggable(false);
+        applyInputModeUi();
+        updateVoiceState();
     }
 
-    /** Enable GameFace service. */
+    /** Enable PWDe service. */
     public void enableService() {
         Log.i(TAG, "enableService, current: "+serviceState);
 
@@ -502,10 +581,12 @@ public class CursorAccessibilityService extends AccessibilityService implements 
 
 
         serviceState = ServiceState.ENABLE;
+        applyInputModeUi();
+        updateVoiceState();
 
     }
 
-    /** Disable GameFace service. */
+    /** Disable PWDe service. */
     public void disableService() {
         Log.i(TAG, "disableService");
         switch (serviceState) {
@@ -513,6 +594,8 @@ public class CursorAccessibilityService extends AccessibilityService implements 
             case GLOBAL_STICK:
             case PAUSE:
                 serviceUiManager.hideAllWindows();
+                joystickController.clear();
+                stopVoice();
                 serviceUiManager.setCameraBoxDraggable(true);
 
                 // stop the service functions.
@@ -539,11 +622,136 @@ public class CursorAccessibilityService extends AccessibilityService implements 
         }
     }
 
-    /** Destroy GameFace service and unregister broadcasts. */
+    /** Reload the per-profile input mode and joystick config, then show/hide UI. */
+    private void reloadInputMode() {
+        inputMode = InputModeConfig.getInputMode(this);
+        joystickController.setConfig(JoystickConfig.load(this));
+        applyInputModeUi();
+    }
+
+    /** Show/hide the floating cursor and joystick overlay based on the current mode/state. */
+    private void applyInputModeUi() {
+        boolean enabled = serviceState == ServiceState.ENABLE || serviceState == ServiceState.GLOBAL_STICK;
+        if (inputMode == InputModeConfig.InputMode.JOYSTICK) {
+            serviceUiManager.hideCursor();
+            if (!enabled) {
+                joystickController.clear();
+            }
+        } else {
+            joystickController.clear();
+            if (enabled) {
+                serviceUiManager.showCursor();
+            }
+        }
+    }
+
+    /** Reload voice commands from the active profile and (re)start/stop the recognizer. */
+    private void reloadVoiceConfig() {
+        voiceConfig = VoiceCommandConfig.load(this);
+        updateVoiceState();
+    }
+
+    /** Start the recognizer only when enabled, ENABLE mode, and the mic permission is granted. */
+    private void updateVoiceState() {
+        if (voiceController == null || voiceConfig == null) {
+            return;
+        }
+        if (voiceConfig.isEnabled() && serviceState == ServiceState.ENABLE) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "RECORD_AUDIO permission not granted; voice disabled.");
+                stopVoice();
+                return;
+            }
+            voiceController.start();
+        } else {
+            stopVoice();
+        }
+    }
+
+    private void stopVoice() {
+        if (voiceController != null) {
+            voiceController.stop();
+        }
+    }
+
+    /** Voice command callback: match the phrase to a configured command and execute it. */
+    private void onVoiceCommand(String phrase) {
+        VoiceCommandConfig.Command command = voiceConfig.getCommandForPhrase(phrase);
+        if (command != null) {
+            Log.i(TAG, "voice command: " + phrase + " -> " + command.action);
+            executeVoiceAction(command);
+        }
+    }
+
+    private void executeVoiceAction(VoiceCommandConfig.Command command) {
+        switch (command.action) {
+            case SKILL_1:
+            case SKILL_2:
+            case SKILL_3:
+                tapSkill(command);
+                break;
+            case JOYSTICK_UP:
+            case JOYSTICK_DOWN:
+            case JOYSTICK_LEFT:
+            case JOYSTICK_RIGHT:
+                pushJoystick(command);
+                break;
+            case SWITCH_PROFILE:
+            case SWITCH_MODE_CURSOR:
+            case SWITCH_MODE_JOYSTICK:
+                String message = VoiceCommandRouter.execute(this, command);
+                Log.i(TAG, message);
+                Intent result = new Intent("VOICE_SWITCH_RESULT");
+                result.putExtra("message", message);
+                sendBroadcast(result);
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** Tap the configured on-screen point for a skill. */
+    private void tapSkill(VoiceCommandConfig.Command command) {
+        int index = command.action.ordinal() - VoiceCommandConfig.Action.SKILL_1.ordinal();
+        int x = (int) (voiceConfig.getSkillX(index) * screenSize.x);
+        int y = (int) (voiceConfig.getSkillY(index) * screenSize.y);
+        dispatchGesture(CursorUtils.createClick(x, y, 0, 250), null, null);
+    }
+
+    /** Emulate a brief joystick push in the given direction. */
+    private void pushJoystick(VoiceCommandConfig.Command command) {
+        JoystickConfig joystickConfig = JoystickConfig.load(this);
+        int cx = (int) (joystickConfig.centerX * screenSize.x);
+        int cy = (int) (joystickConfig.centerY * screenSize.y);
+        int radius = (int) (joystickConfig.radius * Math.min(screenSize.x, screenSize.y));
+        int offsetX = 0;
+        int offsetY = 0;
+        switch (command.action) {
+            case JOYSTICK_UP:
+                offsetY = -radius;
+                break;
+            case JOYSTICK_DOWN:
+                offsetY = radius;
+                break;
+            case JOYSTICK_LEFT:
+                offsetX = -radius;
+                break;
+            case JOYSTICK_RIGHT:
+                offsetX = radius;
+                break;
+            default:
+                return;
+        }
+        dispatchGesture(CursorUtils.createSwipe(cx, cy, offsetX, offsetY, 100), null, null);
+    }
+
+    /** Destroy PWDe service and unregister broadcasts. */
     @Override
     public void onDestroy() {
         Log.i(TAG, "onDestroy");
         disableService();
+        stopVoice();
         disableSelf();
         // Unregister when the service is destroyed
         unregisterReceiver(changeServiceStateReceiver);
@@ -551,6 +759,7 @@ public class CursorAccessibilityService extends AccessibilityService implements 
         unregisterReceiver(loadSharedConfigGestureReceiver);
         unregisterReceiver(requestServiceStateReceiver);
         unregisterReceiver(enableScorePreviewReceiver);
+        unregisterReceiver(loadProfileReceiver);
         unregisterReceiver(serviceUiManager.flyInWindowReceiver);
         unregisterReceiver(serviceUiManager.flyOutWindowReceiver);
 

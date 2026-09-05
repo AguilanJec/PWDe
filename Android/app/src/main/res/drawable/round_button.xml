@@ -16,6 +16,6 @@
 -->
 
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#1967D2" />
+    <solid android:color="@color/esports_accent" />
     <corners android:radius="500dp" />
 </shape>

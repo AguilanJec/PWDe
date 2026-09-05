@@ -13,9 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.projectgameface;
+package com.pwde;
 
-import android.content.Context;
 import android.content.SharedPreferences;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -36,8 +35,7 @@ public class BlendshapeEventTriggerConfigTest {
 
     // Try edit the local preference.
     SharedPreferences preferences =
-        ApplicationProvider.getApplicationContext()
-            .getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        new ProfileManager(ApplicationProvider.getApplicationContext()).getConfigSharedPreferences();
     SharedPreferences.Editor editor = preferences.edit();
     // Try set TOUCH-->(RAISE_LEFT_EYEBROW, 0.9)
     // 5 is RAISE_LEFT_EYEBROW.

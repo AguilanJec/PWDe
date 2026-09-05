@@ -1,10 +1,9 @@
-# Project Gameface
-Project Gameface helps gamers control their mouse cursor using their head movement and facial gestures.
+# PWDe
+PWDe is a platform that helps people with disabilities (PWDs) play esports titles on mobile. The Android app lets users drive a virtual cursor with their head movement and facial gestures, giving hands-free control over the device.
 
-
-Project Gameface available in two platforms:
-- [Windows](/Windows/)
-- [Android](/Android/)
+PWDe is available in two platforms:
+- [Windows](/Windows/) (Project Gameface desktop app)
+- [Android](/Android/) (PWDe)
 
 
 # Model used
@@ -15,11 +14,9 @@ MediaPipe Face Landmark Detection API [Task Guide](https://developers.google.com
 
 
 # Application
-- Control mouse cursor in games.
-- Intended users are people who choose to use face-control and head movement for gaming purposes.
+- Control mouse cursor in games and mobile esports titles.
+- Intended users are people with disabilities who choose to use face-control and head movement for gaming purposes.
 
 # Out-of-Scope Applications
 * This project is not intended for human life-critical decisions 
 * Predicted face landmarks do not provide facial recognition or identification and do not store any unique face representation.
-
-

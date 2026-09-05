@@ -15,7 +15,19 @@
 -->
 
 <resources>
-    <string name="app_name">GameFace</string>
+    <string name="app_name">PWDe</string>
+
+    <!-- Home dashboard module cards -->
+    <string name="module_control_title">Control</string>
+    <string name="module_control_desc">Gestures, input mode, cursor speed &amp; joystick</string>
+    <string name="module_voice_title">Voice</string>
+    <string name="module_voice_desc">Say commands to cast skills and steer</string>
+    <string name="module_help_title">Help</string>
+    <string name="module_help_desc">Tutorials, phone stand &amp; tips</string>
+    <string name="module_test_title">Testing station</string>
+    <string name="module_test_desc">Face, voice, profile &amp; mode diagnostics</string>
+    <string name="module_back">Go back</string>
+    <string name="profile_manage">Manage profile</string>
 
 
 

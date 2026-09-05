@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.google.projectgameface;
+package com.pwde;
 
 import android.annotation.SuppressLint;
 import android.content.Context;

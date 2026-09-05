@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.projectgameface;
+package com.pwde;
 
 import android.app.Activity;
 import android.app.Application;
@@ -21,7 +21,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 
-import com.google.projectgameface.R;
+import com.pwde.R;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -36,7 +36,7 @@ import static org.junit.Assert.assertEquals;
 public class ChooseGestureActivityTest {
     private final Activity activityCursorBinding = Robolectric.buildActivity(CursorBinding.class).create().get();
 
-    SharedPreferences preferences = ApplicationProvider.getApplicationContext().getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+    SharedPreferences preferences = new ProfileManager(ApplicationProvider.getApplicationContext()).getConfigSharedPreferences();
 
     @Test
     public void selectGesture_chooseToGestureSizeActivity() {

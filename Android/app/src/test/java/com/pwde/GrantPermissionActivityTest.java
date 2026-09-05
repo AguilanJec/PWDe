@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.projectgameface;
+package com.pwde;
 
 import android.app.Activity;
 import android.app.Application;
@@ -24,7 +24,7 @@ import static org.junit.Assert.assertEquals;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
-import com.google.projectgameface.R;
+import com.pwde.R;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -57,7 +57,7 @@ public class GrantPermissionActivityTest {
 
         GrantPermissionActivity grantPermissionActivityResume = Robolectric.buildActivity(GrantPermissionActivity.class, mockIntent).create().start().resume().get();
         String description = grantPermissionActivityResume.getDescriptionTextViewValue();
-        String actual = "Change permissions in your device’s \napp settings. Give GameFace access to \nCamera.";
+        String actual = "Change permissions in your device’s \napp settings. Give PWDe access to \nCamera.";
 
         assertEquals(actual, description);
     }
@@ -69,7 +69,7 @@ public class GrantPermissionActivityTest {
 
         GrantPermissionActivity grantPermissionActivityResume = Robolectric.buildActivity(GrantPermissionActivity.class, mockIntent).create().start().resume().get();
         String description = grantPermissionActivityResume.getDescriptionTextViewValue();
-        String actual = "Change permissions in your device’s \napp settings. Give GameFace access to \nAccessibility.";
+        String actual = "Change permissions in your device’s \napp settings. Give PWDe access to \nAccessibility.";
 
         assertEquals(actual, description);
     }

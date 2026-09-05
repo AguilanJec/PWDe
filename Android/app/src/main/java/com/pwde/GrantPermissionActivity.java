@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.google.projectgameface;
+package com.pwde;
 
 import android.content.Intent;
 import android.os.Bundle;
@@ -38,12 +38,16 @@ public class GrantPermissionActivity extends AppCompatActivity {
         TextView description = findViewById(R.id.description);
         ImageView imagePermission = findViewById(R.id.imagePermission);
         if(Objects.equals(permission, "grantAccessibility")){
-            description.setText("Change permissions in your device’s \napp settings. Give GameFace access to \nAccessibility.");
+            description.setText("Change permissions in your device’s \napp settings. Give PWDe access to \nAccessibility.");
             imagePermission.setImageResource(R.drawable.grant_accessibility);
         }
         else if(Objects.equals(permission, "grantCamera")){
-            description.setText("Change permissions in your device’s \napp settings. Give GameFace access to \nCamera.");
+            description.setText("Change permissions in your device’s \napp settings. Give PWDe access to \nCamera.");
             imagePermission.setImageResource(R.drawable.grant_camera);
+        }
+        else if(Objects.equals(permission, "grantMicrophone")){
+            description.setText("Change permissions in your device’s \napp settings. Give PWDe access to the \nMicrophone so voice controls can run.");
+            imagePermission.setImageResource(R.drawable.ic_mic_24);
         }
         findViewById(R.id.setting).setOnClickListener(v -> {
             Intent intent1 = new Intent(getBaseContext(), MainActivity.class);

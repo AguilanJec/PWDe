@@ -19,10 +19,10 @@
     <item>
         <shape
             android:shape="rectangle">
-            <solid android:color="#E9F1FC" />
+            <solid android:color="@color/esports_surface" />
             <stroke
                 android:width="2dp"
-            android:color="#0286FF" />
+            android:color="@color/esports_accent_2" />
             <corners android:radius="10dp" />
         </shape>
     </item>

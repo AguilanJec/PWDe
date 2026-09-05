@@ -19,7 +19,7 @@
     <item>
         <shape
             android:shape="rectangle">
-            <solid android:color="#E9F1FC" />
+            <solid android:color="@color/esports_surface" />
             <corners android:radius="10dp" />
         </shape>
     </item>

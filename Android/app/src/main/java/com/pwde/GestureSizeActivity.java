@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.google.projectgameface;
+package com.pwde;
 
 import android.view.MenuItem;
 import android.view.ViewTreeObserver;
@@ -36,7 +36,7 @@ import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
-import com.google.projectgameface.CursorAccessibilityService.ServiceState;
+import com.pwde.CursorAccessibilityService.ServiceState;
 
 import java.util.Objects;
 
@@ -75,7 +75,7 @@ public class GestureSizeActivity extends AppCompatActivity {
         setContentView(R.layout.activity_gesture_size);
         getWindow().addFlags(LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        SharedPreferences preferences = getSharedPreferences("GameFaceLocalConfig", Context.MODE_PRIVATE);
+        SharedPreferences preferences = new ProfileManager(this).getConfigSharedPreferences();
 
 
         BlendshapeEventTriggerConfig.EventType pageEventType = (BlendshapeEventTriggerConfig.EventType) getIntent().getSerializableExtra("eventType");

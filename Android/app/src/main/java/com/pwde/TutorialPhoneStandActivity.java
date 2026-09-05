@@ -1,4 +1,4 @@
-package com.google.projectgameface;
+package com.pwde;
 
 import android.content.Intent;
 import android.os.Bundle;
