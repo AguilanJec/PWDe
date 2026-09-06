@@ -17,6 +17,7 @@
 package com.pwde;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -33,6 +34,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -72,7 +74,17 @@ public final class PlacementEditorActivity extends AppCompatActivity {
   private String mode;
   private final List<Marker> markers = new ArrayList<>();
   private PlacementPreview preview;
-  private boolean showReference; // Toggleable positioning aid: reference image behind the marker.
+  // Positioning aid: the reference image behind the markers. On by default so the picture is the
+  // background the markers line up against; the switch just hides it when a plain screen is wanted.
+  private boolean showReference = true;
+  private int markerOpacity; // 0..100, opacity of the draggable markers over the reference.
+  private int referenceDim; // 0..100, black dim applied to the reference image.
+
+  private static final String PREFS_NAME = "placement_editor_visuals";
+  private static final String KEY_MARKER_OPACITY = "marker_opacity";
+  private static final String KEY_REFERENCE_DIM = "reference_dim";
+  private static final int DEFAULT_MARKER_OPACITY = 85;
+  private static final int DEFAULT_REFERENCE_DIM = 0;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -121,6 +133,14 @@ public final class PlacementEditorActivity extends AppCompatActivity {
         new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, /* weight= */ 1f));
 
+    // Visual-aid preferences: marker opacity and reference dim. Stored so the user's last
+    // mapping setup is restored next time.
+    SharedPreferences visualPrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+    markerOpacity = visualPrefs.getInt(KEY_MARKER_OPACITY, DEFAULT_MARKER_OPACITY);
+    referenceDim = visualPrefs.getInt(KEY_REFERENCE_DIM, DEFAULT_REFERENCE_DIM);
+    preview.setMarkerOpacity(markerOpacity / 100f);
+    preview.setReferenceDim(referenceDim);
+
     // Both modes are positioned against a real game screen, so offer an optional reference
     // image (background_reference) to line the markers up. Visual aid only - never persisted.
     LinearLayout referenceRow = new LinearLayout(this);
@@ -135,6 +155,7 @@ public final class PlacementEditorActivity extends AppCompatActivity {
         new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
     Switch referenceSwitch = new Switch(this);
+    referenceSwitch.setChecked(showReference); // Picture is the background until the user hides it.
     referenceSwitch.setOnCheckedChangeListener(
         (button, checked) -> {
           showReference = checked;
@@ -142,6 +163,9 @@ public final class PlacementEditorActivity extends AppCompatActivity {
         });
     referenceRow.addView(referenceSwitch);
     root.addView(referenceRow);
+
+    root.addView(addVisualAidSlider(root, "Marker opacity", markerOpacity, visualPrefs, true));
+    root.addView(addVisualAidSlider(root, "Reference dim", referenceDim, visualPrefs, false));
 
     root.addView(preview);
 
@@ -175,6 +199,57 @@ public final class PlacementEditorActivity extends AppCompatActivity {
 
     root.addView(buttons);
     setContentView(root);
+  }
+
+  /** Adds a labelled slider row for one visual aid and returns the row (already added to root). */
+  private LinearLayout addVisualAidSlider(
+      LinearLayout root, String label, int value, SharedPreferences prefs, boolean marker) {
+    LinearLayout row = new LinearLayout(this);
+    row.setOrientation(LinearLayout.HORIZONTAL);
+    row.setGravity(Gravity.CENTER_VERTICAL);
+
+    TextView labelView = new TextView(this);
+    labelView.setText(label);
+    labelView.setTextColor(getColor(R.color.esports_text));
+    labelView.setMaxLines(1);
+    labelView.setEllipsize(TextUtils.TruncateAt.END);
+    row.addView(
+        labelView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+    SeekBar bar = new SeekBar(this);
+    bar.setMax(100);
+    bar.setProgress(clampInt(value, 0, 100));
+    bar.setOnSeekBarChangeListener(
+        new SeekBar.OnSeekBarChangeListener() {
+          @Override
+          public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+            if (marker) {
+              markerOpacity = progress;
+              preview.setMarkerOpacity(progress / 100f);
+            } else {
+              referenceDim = progress;
+              preview.setReferenceDim(progress);
+            }
+            preview.invalidate();
+          }
+
+          @Override
+          public void onStartTrackingTouch(SeekBar seekBar) {}
+
+          @Override
+          public void onStopTrackingTouch(SeekBar seekBar) {
+            prefs
+                .edit()
+                .putInt(marker ? KEY_MARKER_OPACITY : KEY_REFERENCE_DIM, seekBar.getProgress())
+                .apply();
+          }
+        });
+    row.addView(bar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2f));
+    return row;
+  }
+
+  private static int clampInt(int value, int min, int max) {
+    return Math.min(max, Math.max(min, value));
   }
 
   private void loadMarkers() {
@@ -260,18 +335,25 @@ public final class PlacementEditorActivity extends AppCompatActivity {
     private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF screenRect = new RectF();
-    private final RectF imageRect = new RectF();
+    // Where the reference picture is actually drawn: an aspect-preserving (contain) fit of the
+    // bitmap inside screenRect, centred. Markers are interpreted against this exact rectangle so
+    // what is lined up over a button in the picture lands at the same spot on the game screen.
+    private final RectF pictureRect = new RectF();
     private final Path clipPath = new Path();
     private final Bitmap referenceBitmap; // The toggleable positioning aid.
 
     private Marker dragging;
     private float dragOffsetX;
     private float dragOffsetY;
+    private final JoystickConfig joystickConfig;
     private final float joystickRadius;
+    private float markerOpacity = 0.85f;
+    private int referenceDim = 0;
 
     PlacementPreview(PlacementEditorActivity activity) {
       super(activity);
-      joystickRadius = JoystickConfig.load(activity).radius;
+      joystickConfig = JoystickConfig.load(activity);
+      joystickRadius = joystickConfig.radius;
       screenPaint.setStyle(Paint.Style.FILL);
       screenPaint.setColor(Color.parseColor("#16181D"));
       screenPaint.setStrokeWidth(0f);
@@ -299,6 +381,18 @@ public final class PlacementEditorActivity extends AppCompatActivity {
       invalidate();
     }
 
+    /** Set marker/joystick-reach opacity (0..1) so the reference can be seen through them. */
+    void setMarkerOpacity(float opacity) {
+      markerOpacity = clamp(opacity);
+      invalidate();
+    }
+
+    /** Set the black dim applied to the reference image (0..100). */
+    void setReferenceDim(int dim) {
+      referenceDim = clampInt(dim, 0, 100);
+      invalidate();
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
       int width = MeasureSpec.getSize(widthMeasureSpec);
@@ -308,14 +402,13 @@ public final class PlacementEditorActivity extends AppCompatActivity {
     }
 
     /**
-     * Computes the marker coordinate space for this frame. Always the inset phone "screen";
-     * when the reference image is on, the largest centered region of that screen whose aspect
-     * ratio matches the image (contain-fit), so normalized positions hit the picture 1:1.
-     * Fills {@link #screenRect} (phone area) and, while the reference is shown, {@link
-     * #imageRect}; returns the rect markers, grid and joystick reach must be interpreted
-     * against, or null when the view is too small to draw.
+     * Builds the reference-to-screen projection for this frame and fills {@link #screenRect} (the
+     * inset phone "screen" area). Markers, the grid and the joystick reach are always interpreted
+     * against the reference image's contain-fit projection, the same space the runtime overlay
+     * uses, so what is lined up here lands at the same on-screen spot on any device. Returns null
+     * when the view is too small to draw.
      */
-    private RectF contentRect() {
+    private ReferenceProjection projection() {
       float left = getPaddingLeft() + dp(INSET_DP);
       float top = getPaddingTop() + dp(INSET_DP);
       float right = getWidth() - getPaddingRight() - dp(INSET_DP);
@@ -324,66 +417,89 @@ public final class PlacementEditorActivity extends AppCompatActivity {
         return null;
       }
       screenRect.set(left, top, right, bottom);
-      if (showReference && referenceBitmap != null) {
-        float scale =
-            Math.min((right - left) / referenceBitmap.getWidth(),
-                (bottom - top) / referenceBitmap.getHeight());
-        float drawWidth = referenceBitmap.getWidth() * scale;
-        float drawHeight = referenceBitmap.getHeight() * scale;
-        imageRect.set(
-            left + (right - left - drawWidth) / 2f,
-            top + (bottom - top - drawHeight) / 2f,
-            left + (right - left + drawWidth) / 2f,
-            top + (bottom - top + drawHeight) / 2f);
-        return imageRect;
+      fitPictureRect();
+      // Markers live in the reference picture's space: the aspect-preserving box the picture is
+      // drawn into. A marker placed over a button in the picture therefore maps to the same
+      // normalized point on the real game screen at runtime (the runtime projects onto the full
+      // screen), so the picture can be shown edge-to-edge without warping and placement stays
+      // screen-size independent.
+      return new ReferenceProjection(
+          pictureRect.left, pictureRect.top, pictureRect.width(), pictureRect.height());
+    }
+
+    /** Compute the aspect-preserving (contain) box the reference picture is drawn into. */
+    private void fitPictureRect() {
+      pictureRect.set(screenRect);
+      if (referenceBitmap == null) {
+        return;
       }
-      return screenRect;
+      float imageAspect = referenceBitmap.getWidth() / (float) referenceBitmap.getHeight();
+      float screenAspect = screenRect.width() / screenRect.height();
+      if (imageAspect >= screenAspect) {
+        // Image is wider (or equal): fit to the width and centre vertically.
+        float height = screenRect.width() / imageAspect;
+        float top = screenRect.top + (screenRect.height() - height) / 2f;
+        pictureRect.set(screenRect.left, top, screenRect.right, top + height);
+      } else {
+        // Image is taller: fit to the height and centre horizontally.
+        float width = screenRect.height() * imageAspect;
+        float left = screenRect.left + (screenRect.width() - width) / 2f;
+        pictureRect.set(left, screenRect.top, left + width, screenRect.bottom);
+      }
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
       super.onDraw(canvas);
-      RectF content = contentRect();
-      if (content == null) {
+      ReferenceProjection projection = projection();
+      if (projection == null) {
         return;
       }
       canvas.drawRoundRect(screenRect, dp(16), dp(16), screenPaint);
 
       if (showReference && referenceBitmap != null) {
-        // Contain-fit the reference image inside the rounded phone area: the whole game
-        // screen stays visible (never cropped) so marker positions map 1:1 onto the picture.
-        // content == imageRect here; the letterboxed area outside keeps the plain phone look.
+        // The reference is a full screenshot of the game screen. Draw it aspect-preserving
+        // (contain fit, centred inside the phone area) so it never warps, then interpret every
+        // marker against pictureRect — the same normalized space the runtime projects onto the
+        // full game screen — so what is lined up here lands on the same spot when the game runs.
         clipPath.reset();
         clipPath.addRoundRect(screenRect, dp(16), dp(16), Path.Direction.CW);
         canvas.save();
         canvas.clipPath(clipPath);
-        // Source rect is the whole bitmap (null), destination is imageRect.
-        canvas.drawBitmap(referenceBitmap, null, imageRect, null);
-        // Dim the reference slightly so the marker and its reach circle stay readable.
-        canvas.drawRoundRect(imageRect, dp(16), dp(16), scrimPaint);
+        canvas.drawBitmap(referenceBitmap, null, pictureRect, null);
+        if (referenceDim > 0) {
+          scrimPaint.setColor(Color.argb(referenceDim * 255 / 100, 0, 0, 0));
+          canvas.drawRoundRect(screenRect, dp(16), dp(16), scrimPaint);
+        }
         canvas.restore();
       }
 
-      // Grid so the user can line markers up (brighter when drawn over the reference image).
+      // Grid so the user can line markers up (brighter when drawn over the reference image). The
+      // grid is drawn over the picture box so it shares the same space the markers use.
       Paint grid = showReference ? gridOnImagePaint : gridPaint;
       for (int i = 1; i <= 2; i++) {
-        float y = content.top + content.height() * i / 3f;
-        canvas.drawLine(content.left, y, content.right, y, grid);
-        float x = content.left + content.width() * i / 3f;
-        canvas.drawLine(x, content.top, x, content.bottom, grid);
+        float y = pictureRect.top + pictureRect.height() * i / 3f;
+        canvas.drawLine(pictureRect.left, y, pictureRect.right, y, grid);
+        float x = pictureRect.left + pictureRect.width() * i / 3f;
+        canvas.drawLine(x, pictureRect.top, x, pictureRect.bottom, grid);
       }
 
+      // Apply the mapping opacity so the reference image stays visible through the markers.
+      basePaint.setColor(Color.argb(Math.round(markerOpacity * 255), 0x3D, 0x7B, 0xFF));
+      ringPaint.setColor(Color.argb(Math.round(markerOpacity * 255), 0x16, 0x18, 0x1D));
+      textPaint.setColor(Color.argb(Math.round(markerOpacity * 255), 255, 255, 255));
+
       for (Marker marker : markers) {
-        float cx = content.left + marker.x * content.width();
-        float cy = content.top + marker.y * content.height();
+        float cx = projection.pxFromNormX(marker.x);
+        float cy = projection.pxFromNormY(marker.y);
         boolean isJoystick = marker.index < 0;
         int radius = dp(MARKER_RADIUS_DP);
         if (isJoystick) {
           // The joystick also shows the reachable thumb area (radius from JoystickConfig).
-          float reach = Math.min(content.width(), content.height()) * joystickRadius;
+          float reach = projection.screenRadius(joystickRadius);
           Paint reachPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
           reachPaint.setStyle(Paint.Style.STROKE);
-          reachPaint.setColor(Color.parseColor("#553D7BFF"));
+          reachPaint.setColor(Color.argb(Math.round(0x55 * markerOpacity), 0x3D, 0x7B, 0xFF));
           reachPaint.setStrokeWidth(dp(2));
           canvas.drawCircle(cx, cy, reach, reachPaint);
         }
@@ -395,17 +511,17 @@ public final class PlacementEditorActivity extends AppCompatActivity {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-      RectF content = contentRect();
-      if (content == null) {
+      ReferenceProjection projection = projection();
+      if (projection == null) {
         return false;
       }
 
       switch (event.getActionMasked()) {
         case MotionEvent.ACTION_DOWN:
-          dragging = markerNear(event.getX(), event.getY(), content);
+          dragging = markerNear(event.getX(), event.getY(), projection);
           if (dragging != null) {
-            float cx = content.left + dragging.x * content.width();
-            float cy = content.top + dragging.y * content.height();
+            float cx = projection.pxFromNormX(dragging.x);
+            float cy = projection.pxFromNormY(dragging.y);
             dragOffsetX = event.getX() - cx;
             dragOffsetY = event.getY() - cy;
             return true;
@@ -415,8 +531,13 @@ public final class PlacementEditorActivity extends AppCompatActivity {
           if (dragging != null) {
             float cx = event.getX() - dragOffsetX;
             float cy = event.getY() - dragOffsetY;
-            dragging.x = clamp((cx - content.left) / content.width());
-            dragging.y = clamp((cy - content.top) / content.height());
+            dragging.x = clamp(projection.normFromPxX(cx));
+            dragging.y = clamp(projection.normFromPxY(cy));
+            // Skill buttons must never sit on the joystick base (bottom-left), so as a marker is
+            // dragged push it out of the joystick's reach. The joystick marker itself is exempt.
+            if (dragging.index >= 0) {
+              pushOutOfJoystick(dragging, projection);
+            }
             invalidate();
             return true;
           }
@@ -430,13 +551,13 @@ public final class PlacementEditorActivity extends AppCompatActivity {
       }
     }
 
-    private Marker markerNear(float x, float y, RectF content) {
+    private Marker markerNear(float x, float y, ReferenceProjection projection) {
       float slop = dp(GRAB_SLOP_DP);
       Marker best = null;
       float bestDistance = slop * slop;
       for (Marker marker : markers) {
-        float cx = content.left + marker.x * content.width();
-        float cy = content.top + marker.y * content.height();
+        float cx = projection.pxFromNormX(marker.x);
+        float cy = projection.pxFromNormY(marker.y);
         float dx = x - cx;
         float dy = y - cy;
         float distance = dx * dx + dy * dy;
@@ -446,6 +567,27 @@ public final class PlacementEditorActivity extends AppCompatActivity {
         }
       }
       return best;
+    }
+
+    /** Push a skill marker out of the joystick's reach circle so buttons never cover the base. */
+    private void pushOutOfJoystick(Marker marker, ReferenceProjection projection) {
+      float jx = projection.pxFromNormX(joystickConfig.centerX);
+      float jy = projection.pxFromNormY(joystickConfig.centerY);
+      float reach =
+          projection.screenRadius(joystickConfig.radius) + dp(MARKER_RADIUS_DP) + dp(6);
+      float mx = projection.pxFromNormX(marker.x);
+      float my = projection.pxFromNormY(marker.y);
+      float dx = mx - jx;
+      float dy = my - jy;
+      float distance = (float) Math.hypot(dx, dy);
+      if (distance >= reach || distance <= 0.0001f) {
+        return;
+      }
+      float scale = reach / distance;
+      float nx = jx + dx * scale;
+      float ny = jy + dy * scale;
+      marker.x = clamp(projection.normFromPxX(nx));
+      marker.y = clamp(projection.normFromPxY(ny));
     }
   }
 

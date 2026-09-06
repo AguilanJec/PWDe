@@ -590,6 +590,14 @@ public final class VoiceController implements RecognitionListener {
     noteCallback();
     consecutiveErrors = 0;
     retryDelayMs = RESTART_DELAY_MS;
+    // When the quick-fire path already cast from a live partial transcript the current
+    // session was canceled. Some recognizers still deliver a final result for that canceled
+    // session; handling it would fire the command a second time (for EDIT_POSITIONS that
+    // means toggling the placement editor straight back off, which looks like a flash).
+    if (quickFired) {
+      Log.i(TAG, "discarding final result after quick-fire command");
+      return;
+    }
     handleText(results);
     scheduleRestart(RESTART_DELAY_MS);
   }

@@ -44,6 +44,35 @@ public class VoiceCommandConfigTest {
   }
 
   @Test
+  public void editPositionsDefault_recognizedWhenNotConfigured() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    VoiceCommandConfig.Command command =
+        config.getCommandForPhrase("Edit Positions!");
+    assertNotNull(command);
+    assertEquals(VoiceCommandConfig.Action.EDIT_POSITIONS, command.action);
+    assertNull(command.target);
+  }
+
+  @Test
+  public void editPositionsDefault_notDuplicatedBySaveAndReload() {
+    android.content.Context context = ApplicationProvider.getApplicationContext();
+    VoiceCommandConfig config = VoiceCommandConfig.load(context);
+    assertEquals(VoiceCommandConfig.Action.EDIT_POSITIONS, config.getActionForPhrase("edit positions"));
+
+    config.save(context);
+    VoiceCommandConfig reloaded = VoiceCommandConfig.load(context);
+
+    int matches = 0;
+    for (VoiceCommandConfig.Command command : reloaded.getCommands()) {
+      if (command.action == VoiceCommandConfig.Action.EDIT_POSITIONS) {
+        matches++;
+        assertEquals(VoiceCommandConfig.DEFAULT_EDIT_POSITIONS_PHRASE, command.phrase);
+      }
+    }
+    assertEquals(1, matches);
+  }
+
+  @Test
   public void unknownPhrase_yieldsNone() {
     VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
     assertEquals(VoiceCommandConfig.Action.NONE, config.getActionForPhrase("banana"));
@@ -272,6 +301,24 @@ public class VoiceCommandConfigTest {
     VoiceCommandConfig reloaded = VoiceCommandConfig.load(context);
     assertFalse(reloaded.isContainsMatchEnabled());
     assertFalse(reloaded.isQuickFireEnabled());
+  }
+
+  @Test
+  public void editPositionsPhrase_canBeChangedInMemory() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    config.setEditPositionsPhrase("move buttons");
+    assertEquals("move buttons", config.getEditPositionsPhrase());
+    assertEquals(VoiceCommandConfig.Action.EDIT_POSITIONS, config.getActionForPhrase("MOVE BUTTONS"));
+    assertEquals(VoiceCommandConfig.Action.NONE, config.getActionForPhrase("edit positions"));
+  }
+
+  @Test
+  public void editPositionsPhrase_clearingFallsBackToDefaultDisplay() {
+    VoiceCommandConfig config = VoiceCommandConfig.load(ApplicationProvider.getApplicationContext());
+    config.setEditPositionsPhrase("");
+    assertNull(config.getCommandForPhrase("edit positions"));
+    assertEquals(
+        VoiceCommandConfig.DEFAULT_EDIT_POSITIONS_PHRASE, config.getEditPositionsPhrase());
   }
 
   private static boolean hasProfileWithId(android.content.Context context, String profileId) {

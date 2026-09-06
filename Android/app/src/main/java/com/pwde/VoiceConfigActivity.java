@@ -55,6 +55,7 @@ public final class VoiceConfigActivity extends AppCompatActivity {
   /** profile id -> phrase EditText. */
   private final Map<String, EditText> profilePhraseFields = new HashMap<>();
   private final Map<VoiceCommandConfig.Action, EditText> modePhraseFields = new HashMap<>();
+  private EditText editPositionsPhraseField;
 
   /** skill index -> EditText holding the skill's words (comma-separated). */
   private final List<EditText> skillPhraseFields = new ArrayList<>();
@@ -168,6 +169,23 @@ public final class VoiceConfigActivity extends AppCompatActivity {
       root.addView(phrase);
     }
 
+    addSectionTitle(root, "Hands-free marker placement");
+    TextView editPositionsHint = new TextView(this);
+    editPositionsHint.setText(
+        "While voice control is active in a game, say this keyword to toggle \"edit positions\" "
+            + "mode on and off. When it is on, head controls pause, the skill markers and the "
+            + "joystick base become draggable on the screen, and touches only move those markers "
+            + "(they never reach the game). Drag them over the real buttons, then say the keyword "
+            + "again to save the new positions and resume control.");
+    editPositionsHint.setTextColor(getColor(R.color.esports_text_dim));
+    root.addView(editPositionsHint);
+
+    editPositionsPhraseField = new EditText(this);
+    editPositionsPhraseField.setSingleLine(true);
+    editPositionsPhraseField.setHint(VoiceCommandConfig.DEFAULT_EDIT_POSITIONS_PHRASE);
+    editPositionsPhraseField.setText(config.getEditPositionsPhrase());
+    root.addView(editPositionsPhraseField);
+
     addSectionTitle(root, "Words that cast each skill");
     TextView skillWordsHint = new TextView(this);
     skillWordsHint.setText(
@@ -269,6 +287,7 @@ public final class VoiceConfigActivity extends AppCompatActivity {
     for (EditText field : modePhraseFields.values()) {
       newPhrases.add(field.getText().toString());
     }
+    newPhrases.add(editPositionsPhraseField.getText().toString());
     for (String phrase : newPhrases) {
       String normalized = VoiceCommandConfig.normalize(phrase);
       if (normalized.isEmpty()) {
@@ -295,6 +314,7 @@ public final class VoiceConfigActivity extends AppCompatActivity {
     for (Map.Entry<VoiceCommandConfig.Action, EditText> entry : modePhraseFields.entrySet()) {
       config.setModeSwitchPhrase(entry.getKey(), entry.getValue().getText().toString());
     }
+    config.setEditPositionsPhrase(editPositionsPhraseField.getText().toString());
     return true;
   }
 

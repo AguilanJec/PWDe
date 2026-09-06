@@ -17,6 +17,7 @@
 package com.pwde;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -55,9 +56,14 @@ public final class JoystickConfigActivity extends AppCompatActivity {
   private JoystickPreview preview;
   private boolean showReference; // Toggleable positioning aid: reference image behind the joystick.
   private float previewRadius; // Live radius shown in {@link #preview} while the slider moves.
+  private int baseOpacity; // 0..100, opacity of the joystick base circle/border in the preview.
+
+  private static final String PREFS_NAME = "joystick_preview_visuals";
+  private static final String KEY_BASE_OPACITY = "base_opacity";
+  private static final int DEFAULT_BASE_OPACITY = 100;
 
   private static final int MAX_RADIUS_PROGRESS = 50; // maps 0.05f..0.30f
-  private static final int MAX_SENSITIVITY_PROGRESS = 90; // maps 0.2f..2.0f
+  private static final int MAX_SENSITIVITY_PROGRESS = 165; // maps 0.2f..3.5f
   private static final int MAX_DEADZONE_PROGRESS = 30; // maps 0.00f..0.30f
   private static final int MAX_RELEASE_GRACE_PROGRESS = 50; // maps 0ms..500ms
   private static final int MAX_MOVE_STEP_PROGRESS = 28; // maps 2%..30% of radius
@@ -94,6 +100,10 @@ public final class JoystickConfigActivity extends AppCompatActivity {
             Math.round(240 * getResources().getDisplayMetrics().density)));
     previewRadius = config.radius;
 
+    SharedPreferences visualPrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+    baseOpacity = visualPrefs.getInt(KEY_BASE_OPACITY, DEFAULT_BASE_OPACITY);
+    preview.setBaseOpacity(baseOpacity / 100f);
+
     LinearLayout referenceRow = new LinearLayout(this);
     referenceRow.setOrientation(LinearLayout.HORIZONTAL);
     referenceRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -111,6 +121,32 @@ public final class JoystickConfigActivity extends AppCompatActivity {
         });
     referenceRow.addView(referenceSwitch);
     root.addView(referenceRow);
+
+    TextView baseOpacityValue = new TextView(this);
+    baseOpacityValue.setTextColor(getColor(R.color.esports_text));
+    baseOpacityValue.setGravity(Gravity.END);
+    root.addView(baseOpacityValue);
+    SeekBar baseOpacityBar = addSlider(root, "Base opacity", 100);
+    baseOpacityBar.setProgress(baseOpacity);
+    baseOpacityValue.setText("Base opacity " + baseOpacity + "%");
+    baseOpacityBar.setOnSeekBarChangeListener(
+        new SeekBar.OnSeekBarChangeListener() {
+          @Override
+          public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+            baseOpacity = progress;
+            baseOpacityValue.setText("Base opacity " + progress + "%");
+            preview.setBaseOpacity(progress / 100f);
+            preview.invalidate();
+          }
+
+          @Override
+          public void onStartTrackingTouch(SeekBar seekBar) {}
+
+          @Override
+          public void onStopTrackingTouch(SeekBar seekBar) {
+            visualPrefs.edit().putInt(KEY_BASE_OPACITY, seekBar.getProgress()).apply();
+          }
+        });
 
     radiusValue = new TextView(this);
     radiusValue.setTextColor(getColor(R.color.esports_text));
@@ -238,12 +274,12 @@ public final class JoystickConfigActivity extends AppCompatActivity {
   }
 
   private void setSensitivityProgress(float sensitivity) {
-    sensitivityBar.setProgress(Math.round((sensitivity - 0.2f) / 1.8f * MAX_SENSITIVITY_PROGRESS));
+    sensitivityBar.setProgress(Math.round((sensitivity - 0.2f) / 3.3f * MAX_SENSITIVITY_PROGRESS));
     sensitivityValue.setText(String.format("Sensitivity %.1fx", sensitivity));
   }
 
   private float sensitivityFromProgress(int progress) {
-    return 0.2f + (progress / (float) MAX_SENSITIVITY_PROGRESS) * 1.8f;
+    return 0.2f + (progress / (float) MAX_SENSITIVITY_PROGRESS) * 3.3f;
   }
 
   private void setDeadzoneProgress(float deadzone) {
@@ -306,21 +342,19 @@ public final class JoystickConfigActivity extends AppCompatActivity {
    */
   private final class JoystickPreview extends View {
 
-    private static final int INSET_DP = 12;
+    private static final int INSET_DP = 4;
 
     private final Paint screenPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint basePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint baseBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF screenRect = new RectF();
-    private final RectF imageRect = new RectF();
     private final Path clipPath = new Path();
     private final Bitmap referenceBitmap; // The toggleable positioning aid.
+    private float baseOpacity = 1f;
 
     JoystickPreview(JoystickConfigActivity activity) {
       super(activity);
       screenPaint.setColor(Color.parseColor("#16181D"));
-      scrimPaint.setColor(Color.argb(90, 0, 0, 0));
       basePaint.setColor(Color.argb(80, 255, 255, 255));
       baseBorderPaint.setStyle(Paint.Style.STROKE);
       baseBorderPaint.setStrokeWidth(dp(2));
@@ -328,18 +362,23 @@ public final class JoystickConfigActivity extends AppCompatActivity {
       referenceBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.background_reference);
     }
 
+    /** Set the base circle/border opacity (0..1) so the reference stays visible through it. */
+    void setBaseOpacity(float opacity) {
+      baseOpacity = Math.min(1f, Math.max(0f, opacity));
+      invalidate();
+    }
+
     private int dp(int value) {
       return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     /**
-     * Marker coordinate space for this frame. Always the inset phone "screen"; when the
-     * reference image is on, the largest centered region of that screen whose aspect ratio
-     * matches the image (contain-fit), so the base position hits the picture 1:1. Fills
-     * {@link #screenRect} (phone area) and, while the reference is shown, {@link #imageRect};
-     * returns the rect the joystick base must be drawn in, or null when too small to draw.
+     * Builds the reference-to-screen projection for this frame and fills {@link #screenRect} (the
+     * inset phone "screen" area). The joystick base is always drawn against the reference image's
+     * contain-fit projection, the same space the runtime overlay uses, so the base size and
+     * position match what the game shows on any device. Returns null when the view is too small.
      */
-    private RectF contentRect() {
+    private ReferenceProjection projection() {
       float left = dp(INSET_DP);
       float top = dp(INSET_DP);
       float right = getWidth() - dp(INSET_DP);
@@ -348,49 +387,38 @@ public final class JoystickConfigActivity extends AppCompatActivity {
         return null;
       }
       screenRect.set(left, top, right, bottom);
-      if (showReference && referenceBitmap != null) {
-        float scale =
-            Math.min((right - left) / referenceBitmap.getWidth(),
-                (bottom - top) / referenceBitmap.getHeight());
-        float drawWidth = referenceBitmap.getWidth() * scale;
-        float drawHeight = referenceBitmap.getHeight() * scale;
-        imageRect.set(
-            left + (right - left - drawWidth) / 2f,
-            top + (bottom - top - drawHeight) / 2f,
-            left + (right - left + drawWidth) / 2f,
-            top + (bottom - top + drawHeight) / 2f);
-        return imageRect;
-      }
-      return screenRect;
+      // The projection is defined by the phone-area viewport alone; the reference image is drawn
+      // into exactly that rect, so the joystick base and picture share the same normalized space.
+      return new ReferenceProjection(
+          screenRect.left, screenRect.top, screenRect.width(), screenRect.height());
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
       super.onDraw(canvas);
-      RectF content = contentRect();
-      if (content == null) {
+      ReferenceProjection projection = projection();
+      if (projection == null) {
         return;
       }
       canvas.drawRoundRect(screenRect, dp(16), dp(16), screenPaint);
 
       if (showReference && referenceBitmap != null) {
-        // Contain-fit the reference image inside the rounded phone area: the whole game
-        // screen stays visible (never cropped) so the base maps 1:1 onto the picture.
-        // content == imageRect here; the letterboxed area outside keeps the plain phone look.
+        // The reference is a full screenshot of the game screen, so draw it edge-to-edge over the
+        // phone area (stretched to the viewport). This makes every button in the picture sit at
+        // the same normalized coordinate the runtime uses.
         clipPath.reset();
         clipPath.addRoundRect(screenRect, dp(16), dp(16), Path.Direction.CW);
         canvas.save();
         canvas.clipPath(clipPath);
-        // Source rect is the whole bitmap (null), destination is imageRect.
-        canvas.drawBitmap(referenceBitmap, null, imageRect, null);
-        // Dim the reference slightly so the joystick base stays readable.
-        canvas.drawRoundRect(imageRect, dp(16), dp(16), scrimPaint);
+        canvas.drawBitmap(referenceBitmap, null, screenRect, null);
         canvas.restore();
       }
 
-      float cx = content.left + config.centerX * content.width();
-      float cy = content.top + config.centerY * content.height();
-      float radius = Math.min(content.width(), content.height()) * previewRadius;
+      float cx = projection.pxFromNormX(config.centerX);
+      float cy = projection.pxFromNormY(config.centerY);
+      float radius = projection.screenRadius(previewRadius);
+      basePaint.setColor(Color.argb(Math.round(80 * baseOpacity), 255, 255, 255));
+      baseBorderPaint.setColor(Color.argb(Math.round(160 * baseOpacity), 255, 255, 255));
       canvas.drawCircle(cx, cy, radius, basePaint);
       canvas.drawCircle(cx, cy, radius, baseBorderPaint);
       // Center marker so the exact base anchor is visible.

@@ -33,7 +33,7 @@ public class JoystickConfigTest {
     assertEquals(0.15f, config.radius, 0.001f);
     assertEquals(0.5f, config.neutralX, 0.001f);
     assertEquals(0.5f, config.neutralY, 0.001f);
-    assertEquals(1.0f, config.sensitivity, 0.001f);
+    assertEquals(2.0f, config.sensitivity, 0.001f);
     assertEquals(0.08f, config.deadzone, 0.001f);
     assertEquals(150f, config.releaseGraceMs, 0.001f);
     assertEquals(0.10f, config.moveStep, 0.001f);
@@ -63,7 +63,7 @@ public class JoystickConfigTest {
     config.radius = 0.9f;
     config.resetToDefaults();
     assertEquals(0.15f, config.radius, 0.001f);
-    assertEquals(1.0f, config.sensitivity, 0.001f);
+    assertEquals(2.0f, config.sensitivity, 0.001f);
     assertEquals(0.08f, config.deadzone, 0.001f);
     assertEquals(150f, config.releaseGraceMs, 0.001f);
     assertEquals(0.10f, config.moveStep, 0.001f);

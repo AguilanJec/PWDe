@@ -55,7 +55,7 @@ public final class JoystickConfig {
   private static final float DEFAULT_RADIUS = 0.15f;
   private static final float DEFAULT_NEUTRAL_X = 0.5f;
   private static final float DEFAULT_NEUTRAL_Y = 0.5f;
-  private static final float DEFAULT_SENSITIVITY = 1.0f;
+  private static final float DEFAULT_SENSITIVITY = 2.0f;
   private static final float DEFAULT_DEADZONE = 0.08f;
   private static final float DEFAULT_RELEASE_GRACE_MS = 150f;
   private static final float DEFAULT_MOVE_STEP = 0.10f;

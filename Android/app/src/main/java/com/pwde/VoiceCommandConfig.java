@@ -49,7 +49,12 @@ public final class VoiceCommandConfig {
     /** Switch the active profile; {@link Command#target} holds the target profile id. */
     SWITCH_PROFILE,
     SWITCH_MODE_CURSOR,
-    SWITCH_MODE_JOYSTICK
+    SWITCH_MODE_JOYSTICK,
+    /**
+     * Toggle in-game position adjustment: while active, the skill tap markers and the joystick
+     * base become finger-draggable on top of the running game (see the placement adjust overlay).
+     */
+    EDIT_POSITIONS
   }
 
   /** Returns true for actions that change the active profile or input mode. */
@@ -108,6 +113,9 @@ public final class VoiceCommandConfig {
     {"cursor mode", "SWITCH_MODE_CURSOR"},
     {"joystick mode", "SWITCH_MODE_JOYSTICK"},
   };
+
+  /** Fixed phrase that toggles in-game position adjustment ("edit positions" on/off). */
+  public static final String DEFAULT_EDIT_POSITIONS_PHRASE = "edit positions";
 
   // Default profile phrases by profile index (see ensureSwitchDefaults below).
   private static final String[] DEFAULT_PROFILE_PHRASES = {
@@ -331,6 +339,21 @@ public final class VoiceCommandConfig {
     }
   }
 
+  /** @return the configured spoken phrase that toggles "edit positions" mode, or its default. */
+  public String getEditPositionsPhrase() {
+    for (Command command : commands) {
+      if (command.action == Action.EDIT_POSITIONS && !command.phrase.isEmpty()) {
+        return command.phrase;
+      }
+    }
+    return DEFAULT_EDIT_POSITIONS_PHRASE;
+  }
+
+  /** Set (or clear, when blank) the phrase that toggles "edit positions" mode. */
+  public void setEditPositionsPhrase(String phrase) {
+    setModeSwitchPhrase(Action.EDIT_POSITIONS, phrase);
+  }
+
   /**
    * @return every spoken word currently bound to skill {@code index} (all of them trigger the
    *     same tap), or the built-in default word when the skill has no binding yet.
@@ -473,15 +496,18 @@ public final class VoiceCommandConfig {
     }
   }
 
-  /** Make sure mode-switch and profile-switch commands exist (defaults for missing ones). */
+  /** Make sure mode-switch, profile-switch and adjust commands exist (defaults for missing ones). */
   private void ensureSwitchDefaults() {
     boolean hasCursor = false;
     boolean hasJoystick = false;
+    boolean hasEditPositions = false;
     for (Command command : commands) {
       if (command.action == Action.SWITCH_MODE_CURSOR) {
         hasCursor = true;
       } else if (command.action == Action.SWITCH_MODE_JOYSTICK) {
         hasJoystick = true;
+      } else if (command.action == Action.EDIT_POSITIONS) {
+        hasEditPositions = true;
       }
     }
     if (!hasCursor) {
@@ -489,6 +515,9 @@ public final class VoiceCommandConfig {
     }
     if (!hasJoystick) {
       commands.add(new Command("joystick mode", Action.SWITCH_MODE_JOYSTICK));
+    }
+    if (!hasEditPositions) {
+      commands.add(new Command(DEFAULT_EDIT_POSITIONS_PHRASE, Action.EDIT_POSITIONS));
     }
 
     if (!hasSwitchForAnyProfile()) {

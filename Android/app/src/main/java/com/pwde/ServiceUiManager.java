@@ -120,6 +120,14 @@ public class ServiceUiManager {
   public SkillTapOverlayView skillTapOverlayView;
   public LayoutParams skillTapLayoutParams;
 
+  /**
+   * Touchable overlay that drags skill/joystick markers onto the real buttons while the game is
+   * open ("edit positions" voice mode). Shown above every other window; replaces the passive
+   * skill tap markers and the joystick visuals for the duration.
+   */
+  public AdjustMarkersOverlayView placementAdjustView;
+  public LayoutParams placementAdjustLayoutParams;
+
   private final int floatWindowFlags;
   private boolean cameraBoxDraggable = true;
 
@@ -442,6 +450,8 @@ public class ServiceUiManager {
     hideCursor();
     hideFullscreenCanvas();
     hideSkillTapMarkers();
+    hideJoystick();
+    hidePlacementAdjustOverlay();
   }
 
   /** This enum represents the state of camera. */
@@ -641,6 +651,57 @@ public class ServiceUiManager {
     }
     skillTapOverlayView = null;
     skillTapLayoutParams = null;
+  }
+
+  /**
+   * Show the touchable placement-adjust overlay ("edit positions" mode) with the given normalized
+   * model: skill tap markers plus the joystick base and its reach ring. The passive skill tap
+   * markers and the joystick visuals are hidden while this overlay is up, and every touch on the
+   * screen is consumed so calibration never leaks into the game underneath.
+   */
+  public void showPlacementAdjustOverlay(
+      float[] skillXs,
+      float[] skillYs,
+      String[] skillLabels,
+      float joystickX,
+      float joystickY,
+      float joystickRadius) {
+    if (placementAdjustView == null) {
+      placementAdjustView = new AdjustMarkersOverlayView(parentContext);
+      placementAdjustLayoutParams =
+          new LayoutParams(
+              LayoutParams.MATCH_PARENT,
+              LayoutParams.MATCH_PARENT,
+              LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+              LayoutParams.FLAG_NOT_FOCUSABLE
+                  | LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                  | LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+              PixelFormat.TRANSLUCENT);
+      placementAdjustLayoutParams.gravity = Gravity.TOP | Gravity.START;
+      try {
+        windowManager.addView(placementAdjustView, placementAdjustLayoutParams);
+      } catch (RuntimeException e) {
+        Log.w(TAG, "windowManager failed to add placementAdjustView: " + e.getMessage());
+      }
+    }
+    placementAdjustView.setModel(
+        skillXs, skillYs, skillLabels, joystickX, joystickY, joystickRadius);
+    hideSkillTapMarkers();
+    hideJoystick();
+  }
+
+  /** Remove the placement-adjust overlay. The caller re-shows the regular overlays afterwards. */
+  public void hidePlacementAdjustOverlay() {
+    if (placementAdjustView == null) {
+      return;
+    }
+    try {
+      windowManager.removeView(placementAdjustView);
+    } catch (RuntimeException e) {
+      Log.w(TAG, "windowManager failed to remove placementAdjustView, might not attached.");
+    }
+    placementAdjustView = null;
+    placementAdjustLayoutParams = null;
   }
 
   /** Save default camera box position to make it persistent when open the app. */

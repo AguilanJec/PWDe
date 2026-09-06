@@ -56,10 +56,10 @@ public final class SkillTapOverlayView extends View {
 
   private void init() {
     // Translucent centre keeps the actual game button visible under the marker.
-    fillPaint.setColor(Color.argb(45, 255, 255, 255));
+    fillPaint.setColor(Color.argb(30, 255, 255, 255));
     ringPaint.setStyle(Paint.Style.STROKE);
     ringPaint.setStrokeWidth(dp(2f));
-    ringPaint.setColor(Color.argb(220, 255, 255, 255));
+    ringPaint.setColor(Color.argb(150, 255, 255, 255));
     labelPaint.setColor(Color.WHITE);
     labelPaint.setTextSize(dp(LABEL_TEXT_SIZE_DP));
     labelPaint.setTextAlign(Paint.Align.CENTER);
@@ -87,13 +87,21 @@ public final class SkillTapOverlayView extends View {
     super.onDraw(canvas);
     float radius = dp(MARKER_RADIUS_DP);
     float labelGap = dp(3f);
+    float textSize = labelPaint.getTextSize();
     for (int i = 0; i < xs.length; i++) {
       float cx = xs[i];
       float cy = ys[i];
       canvas.drawCircle(cx, cy, radius, fillPaint);
       canvas.drawCircle(cx, cy, radius, ringPaint);
-      canvas.drawText(
-          labels[i], cx, cy + radius + labelGap + labelPaint.getTextSize(), labelPaint);
+      // Skill buttons sit near the bottom-right, so a label drawn below the marker can run off the
+      // bottom of the overlay. Flip it above the marker when the label would be clipped.
+      float labelBaseline;
+      if (cy + radius + labelGap + textSize > getHeight() - dp(2f)) {
+        labelBaseline = cy - radius - labelGap - dp(2f);
+      } else {
+        labelBaseline = cy + radius + labelGap + textSize;
+      }
+      canvas.drawText(labels[i], cx, labelBaseline, labelPaint);
     }
   }
 

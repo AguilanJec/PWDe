@@ -53,11 +53,11 @@ public final class JoystickOverlayView extends View {
   }
 
   private void init() {
-    basePaint.setColor(Color.argb(80, 255, 255, 255));
+    basePaint.setColor(Color.argb(40, 255, 255, 255));
     baseBorderPaint.setStyle(Paint.Style.STROKE);
     baseBorderPaint.setStrokeWidth(4f);
-    baseBorderPaint.setColor(Color.argb(160, 255, 255, 255));
-    thumbPaint.setColor(Color.argb(200, 105, 190, 255));
+    baseBorderPaint.setColor(Color.argb(100, 255, 255, 255));
+    thumbPaint.setColor(Color.argb(140, 105, 190, 255));
   }
 
   /**

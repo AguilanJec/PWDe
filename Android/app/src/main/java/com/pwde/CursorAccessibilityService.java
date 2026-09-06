@@ -113,6 +113,20 @@ public class CursorAccessibilityService extends AccessibilityService implements 
 
     private ServiceState serviceState = ServiceState.DISABLE;
 
+    /**
+     * True while the "edit positions" voice mode is on: the skill/joystick markers are
+     * finger-draggable over the running game and all head-driven input is suspended.
+     */
+    private boolean placementAdjustActive = false;
+
+    /**
+     * Minimum time between accepted "edit positions" toggles. Quick-fire already discards the
+     * canceled session's final result, but a tiny extra guard here makes the on/off toggle immune
+     * to any duplicate delivery from the recognizer.
+     */
+    private static final long EDIT_POSITIONS_TOGGLE_DEBOUNCE_MS = 1200L;
+    private long lastEditPositionsToggleAtMs = -EDIT_POSITIONS_TOGGLE_DEBOUNCE_MS;
+
     /** The setting app may request the float blendshape score. */
     private String requestedScoreBlendshapeName = "";
 
@@ -190,6 +204,9 @@ public class CursorAccessibilityService extends AccessibilityService implements 
                 @Override
                 public void onReceive(Context context, Intent intent) {
                     Log.i(TAG, "loadProfileReceiver: reloading configs for active profile");
+                    // A profile reload changes every geometry: drop adjust mode so the overlay
+                    // can never point at a half-loaded set of positions.
+                    exitPlacementAdjust();
                     cursorController.cursorMovementConfig.updateAllConfigFromSharedPreference();
                     cursorController.blendshapeEventTriggerConfig.updateAllConfigFromSharedPreference();
                     reloadInputMode();
@@ -334,6 +351,12 @@ public class CursorAccessibilityService extends AccessibilityService implements 
                         // could trigger actions while the user was speaking).
                         break;
                     case ENABLE:
+                        if (placementAdjustActive) {
+                            // In "edit positions" mode the screen is being touched to drag the
+                            // markers, so suspend all head-driven input (cursor, joystick and
+                            // face gestures) until the mode is toggled off again.
+                            break;
+                        }
                         // Drag drag line if in drag mode.
                         if (cursorController.isDragging) {
                             serviceUiManager.updateDragLine(cursorController.getCursorPositionXY());
@@ -348,8 +371,7 @@ public class CursorAccessibilityService extends AccessibilityService implements 
                                 facelandmarkerHelper.getHeadCoordXY(),
                                 facelandmarkerHelper.mpInputWidth,
                                 facelandmarkerHelper.mpInputHeight,
-                                screenSize.x,
-                                screenSize.y);
+                                referenceProjection());
                         } else {
                             cursorController.updateInternalCursorPosition(
                                 facelandmarkerHelper.getHeadCoordXY(),
@@ -502,6 +524,8 @@ public class CursorAccessibilityService extends AccessibilityService implements 
 
     /** Toggle between Pause <-> ENABLE. */
     public void togglePause() {
+        // Voice cannot toggle the mode while paused, so never strand the adjust overlay up.
+        exitPlacementAdjust();
         switch (serviceState) {
             case ENABLE:
                 // Already enable, goto pause mode.
@@ -526,6 +550,8 @@ public class CursorAccessibilityService extends AccessibilityService implements 
      */
     public void enterGlobalStickState() {
         Log.i(TAG, "enterGlobalStickState");
+        // Global stick is a config/test screen: voice is off there, so drop adjust mode first.
+        exitPlacementAdjust();
         switch (serviceState) {
             case PAUSE:
                 togglePause();
@@ -590,6 +616,8 @@ public class CursorAccessibilityService extends AccessibilityService implements 
     /** Disable PWDe service. */
     public void disableService() {
         Log.i(TAG, "disableService");
+        // Leaving the enabled state means leaving adjust mode too (voice is off while disabled).
+        exitPlacementAdjust();
         switch (serviceState) {
             case ENABLE:
             case GLOBAL_STICK:
@@ -687,6 +715,14 @@ public class CursorAccessibilityService extends AccessibilityService implements 
      * are visual reference for aligning the taps with the real game buttons) and hide them
      * otherwise. Positions are recomputed from the current screen size on every call.
      */
+    /**
+     * Builds the full-screen projection used by the runtime overlays and tap dispatch. Normalized
+     * placements are mapped directly across the current screen, matching the placement editor.
+     */
+    private ReferenceProjection referenceProjection() {
+        return new ReferenceProjection(0f, 0f, screenSize.x, screenSize.y);
+    }
+
     private void updateSkillTapOverlay(boolean voiceActive) {
         if (serviceUiManager == null || screenSize == null) {
             return;
@@ -696,13 +732,14 @@ public class CursorAccessibilityService extends AccessibilityService implements 
             return;
         }
         ScreenPlacementConfig placements = new ScreenPlacementConfig(this);
+        ReferenceProjection projection = referenceProjection();
         int count = ScreenPlacementConfig.skillCount();
         float[] xs = new float[count];
         float[] ys = new float[count];
         String[] labels = new String[count];
         for (int i = 0; i < count; i++) {
-            xs[i] = placements.getSkillX(i) * screenSize.x;
-            ys[i] = placements.getSkillY(i) * screenSize.y;
+            xs[i] = projection.pxFromNormX(placements.getSkillX(i));
+            ys[i] = projection.pxFromNormY(placements.getSkillY(i));
             List<String> words = voiceConfig.getSkillPhrases(i);
             labels[i] = words.isEmpty() ? "Skill " + (i + 1) : words.get(0);
         }
@@ -734,6 +771,20 @@ public class CursorAccessibilityService extends AccessibilityService implements 
     }
 
     private void executeVoiceAction(VoiceCommandConfig.Command command) {
+        if (command.action == VoiceCommandConfig.Action.EDIT_POSITIONS) {
+            long now = SystemClock.elapsedRealtime();
+            if (now - lastEditPositionsToggleAtMs < EDIT_POSITIONS_TOGGLE_DEBOUNCE_MS) {
+                Log.i(TAG, "ignoring duplicate edit-positions command");
+                return;
+            }
+            lastEditPositionsToggleAtMs = now;
+            togglePlacementAdjust();
+            return;
+        }
+        if (placementAdjustActive) {
+            Log.i(TAG, "ignoring voice action " + command.action + " while positions are adjusted");
+            return;
+        }
         switch (command.action) {
             case SKILL_1:
             case SKILL_2:
@@ -763,17 +814,19 @@ public class CursorAccessibilityService extends AccessibilityService implements 
     /** Tap the configured on-screen point for a skill. */
     private void tapSkill(VoiceCommandConfig.Command command) {
         int index = command.action.ordinal() - VoiceCommandConfig.Action.SKILL_1.ordinal();
-        int x = (int) (voiceConfig.getSkillX(index) * screenSize.x);
-        int y = (int) (voiceConfig.getSkillY(index) * screenSize.y);
+        ReferenceProjection projection = referenceProjection();
+        int x = (int) projection.pxFromNormX(voiceConfig.getSkillX(index));
+        int y = (int) projection.pxFromNormY(voiceConfig.getSkillY(index));
         dispatchGesture(CursorUtils.createClick(x, y, 0, 250), null, null);
     }
 
     /** Emulate a brief joystick push in the given direction. */
     private void pushJoystick(VoiceCommandConfig.Command command) {
         JoystickConfig joystickConfig = JoystickConfig.load(this);
-        int cx = (int) (joystickConfig.centerX * screenSize.x);
-        int cy = (int) (joystickConfig.centerY * screenSize.y);
-        int radius = (int) (joystickConfig.radius * Math.min(screenSize.x, screenSize.y));
+        ReferenceProjection projection = referenceProjection();
+        int cx = (int) projection.pxFromNormX(joystickConfig.centerX);
+        int cy = (int) projection.pxFromNormY(joystickConfig.centerY);
+        int radius = (int) projection.screenRadius(joystickConfig.radius);
         int offsetX = 0;
         int offsetY = 0;
         switch (command.action) {
@@ -793,6 +846,90 @@ public class CursorAccessibilityService extends AccessibilityService implements 
                 return;
         }
         dispatchGesture(CursorUtils.createSwipe(cx, cy, offsetX, offsetY, 100), null, null);
+    }
+
+    /** Voice-driven toggle of the "edit positions" mode (hands-free in and out). */
+    private void togglePlacementAdjust() {
+        if (placementAdjustActive) {
+            exitPlacementAdjust();
+        } else {
+            enterPlacementAdjust();
+        }
+    }
+
+    /** Enter "edit positions": show the touchable adjust overlay and suspend head input. */
+    private void enterPlacementAdjust() {
+        if (serviceState != ServiceState.ENABLE
+            || serviceUiManager == null
+            || screenSize == null
+            || screenSize.x <= 0
+            || screenSize.y <= 0) {
+            Log.w(TAG, "cannot enter position adjust while state is " + serviceState);
+            return;
+        }
+        Log.i(TAG, "enter placement adjust mode");
+        placementAdjustActive = true;
+        // End any in-flight head-driven drag/joystick stroke so touches on the overlay are the
+        // only input while calibrating.
+        if (cursorController.isDragging) {
+            int[] pos = cursorController.getCursorPositionXY();
+            cursorController.prepareDragEnd(pos[0], pos[1]);
+        }
+        joystickController.clear();
+        refreshPlacementAdjustOverlay();
+    }
+
+    /** Leave "edit positions": hide the overlay, persist any moves and resume head input. */
+    private void exitPlacementAdjust() {
+        if (!placementAdjustActive) {
+            return;
+        }
+        Log.i(TAG, "leave placement adjust mode");
+        placementAdjustActive = false;
+        serviceUiManager.hidePlacementAdjustOverlay();
+        // The player may have dragged the joystick base; the controller keeps an in-memory copy,
+        // so reload it and bring the passive markers back under the new geometry.
+        joystickController.setConfig(JoystickConfig.load(this));
+        updateSkillTapOverlay(voiceShouldRun());
+    }
+
+    /** (Re)show the adjust overlay from the current profile geometry and wire up persistence. */
+    private void refreshPlacementAdjustOverlay() {
+        if (!placementAdjustActive || serviceUiManager == null) {
+            return;
+        }
+        ScreenPlacementConfig placements = new ScreenPlacementConfig(this);
+        int count = ScreenPlacementConfig.skillCount();
+        float[] xs = new float[count];
+        float[] ys = new float[count];
+        String[] labels = new String[count];
+        for (int i = 0; i < count; i++) {
+            xs[i] = placements.getSkillX(i);
+            ys[i] = placements.getSkillY(i);
+            List<String> words = voiceConfig.getSkillPhrases(i);
+            labels[i] = words.isEmpty() ? "Skill " + (i + 1) : words.get(0);
+        }
+        JoystickConfig joystick = JoystickConfig.load(this);
+        serviceUiManager.showPlacementAdjustOverlay(
+            xs, ys, labels, joystick.centerX, joystick.centerY, joystick.radius);
+        serviceUiManager.placementAdjustView.setFinishPhrase(voiceConfig.getEditPositionsPhrase());
+        serviceUiManager.placementAdjustView.setMarkerListener(
+            new AdjustMarkersOverlayView.MarkerListener() {
+                @Override
+                public void onSkillMarkerMoved(int index, float normX, float normY) {
+                    // Written straight into the active profile; taps and markers read on dispatch.
+                    new ScreenPlacementConfig(CursorAccessibilityService.this)
+                        .setSkillPoint(index, normX, normY);
+                }
+
+                @Override
+                public void onJoystickBaseMoved(float normX, float normY) {
+                    JoystickConfig config = JoystickConfig.load(CursorAccessibilityService.this);
+                    config.centerX = normX;
+                    config.centerY = normY;
+                    config.save(CursorAccessibilityService.this);
+                }
+            });
     }
 
     /** Destroy PWDe service and unregister broadcasts. */
@@ -913,6 +1050,10 @@ public class CursorAccessibilityService extends AccessibilityService implements 
 
         }
 
+        // Rotations re-create every window; bring the adjust overlay back when it was active.
+        if (placementAdjustActive && serviceState == ServiceState.ENABLE) {
+            refreshPlacementAdjustOverlay();
+        }
 
     }
 

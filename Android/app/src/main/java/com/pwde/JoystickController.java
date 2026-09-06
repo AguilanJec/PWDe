@@ -55,6 +55,13 @@ public final class JoystickController {
   /** Smallest target movement (px) that justifies a new drag stroke. */
   private static final float MIN_MOVE_PX = 2f;
 
+  /**
+   * Non-linear response on the deflection magnitude (applied after clamping to 0..1). Values below
+   * 1 boost mid-range deflection so a comfortable head tilt reaches full joystick travel sooner,
+   * which is what users report when the response is too "loose".
+   */
+  private static final float RESPONSE_EXPONENT = 0.85f;
+
   private final CursorAccessibilityService service;
   private final ServiceUiManager serviceUiManager;
   private JoystickConfig config;
@@ -99,11 +106,11 @@ public final class JoystickController {
    * @param headCoordXy Forehead landmark position in the mediapipe input image (pixels).
    * @param mpW Mediapipe input width (pixels).
    * @param mpH Mediapipe input height (pixels).
-   * @param screenW Screen width (pixels).
-   * @param screenH Screen height (pixels).
+   * @param projection Maps the profile's normalized (0..1) reference-space geometry to screen
+   *     pixels on the current device.
    */
-  public void update(float[] headCoordXy, int mpW, int mpH, int screenW, int screenH) {
-    if (config == null || serviceUiManager == null || mpW <= 0 || mpH <= 0) {
+  public void update(float[] headCoordXy, int mpW, int mpH, ReferenceProjection projection) {
+    if (config == null || serviceUiManager == null || mpW <= 0 || mpH <= 0 || projection == null) {
       return;
     }
 
@@ -119,14 +126,16 @@ public final class JoystickController {
     float dirY = 0f;
     if (mag > config.deadzone && mag > 0f) {
       float clamped = Math.min(mag, 1f);
+      // Shaping applied on the magnitude keeps the push direction exact while boosting the
+      // deflection for a given head move (see RESPONSE_EXPONENT).
+      knobMagnitude = (float) Math.pow(clamped, RESPONSE_EXPONENT);
       dirX = dx / mag;
       dirY = dy / mag;
-      knobMagnitude = clamped;
     }
 
-    int cx = (int) (config.centerX * screenW);
-    int cy = (int) (config.centerY * screenH);
-    int radius = (int) (config.radius * Math.min(screenW, screenH));
+    int cx = (int) projection.pxFromNormX(config.centerX);
+    int cy = (int) projection.pxFromNormY(config.centerY);
+    int radius = (int) projection.screenRadius(config.radius);
 
     float offsetX = dirX * knobMagnitude * radius;
     float offsetY = dirY * knobMagnitude * radius;
@@ -139,8 +148,8 @@ public final class JoystickController {
     }
 
     float minMovePx = max(MIN_MOVE_PX, config.moveStep * radius);
-    float targetX = clamp(cx + offsetX, 0, screenW - 1);
-    float targetY = clamp(cy + offsetY, 0, screenH - 1);
+    float targetX = clamp(cx + offsetX, 0, projection.viewportWidth() - 1);
+    float targetY = clamp(cy + offsetY, 0, projection.viewportHeight() - 1);
 
     JoystickGestureMachine.Step step =
         machine.update(
@@ -157,11 +166,13 @@ public final class JoystickController {
   }
 
   /** The base center in screen pixels (used by the calibration screen). */
-  public int[] getBaseCenter(int screenW, int screenH) {
-    if (config == null) {
+  public int[] getBaseCenter(ReferenceProjection projection) {
+    if (config == null || projection == null) {
       return new int[] {0, 0};
     }
-    return new int[] {(int) (config.centerX * screenW), (int) (config.centerY * screenH)};
+    return new int[] {
+      (int) projection.pxFromNormX(config.centerX), (int) projection.pxFromNormY(config.centerY)
+    };
   }
 
   private void dispatchStroke(JoystickGestureMachine.Step step) {
